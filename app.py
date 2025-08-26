@@ -21,6 +21,7 @@ except:
 
 # Past upsets
 st.subheader("Past Upsets")
+st.write("Columns in dataset:", df.columns.tolist())
 past_upsets = df[df["is_upset"] == True]
 st.dataframe(past_upsets[["home_team", "away_team", "winner", "is_upset"]])
 
