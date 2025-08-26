@@ -7,6 +7,8 @@
 import streamlit as st
 import pandas as pd
 
+df = pd.read_csv("data/upsets.csv")
+st.write("Columns in dataframe:", df.columns.tolist())
 st.set_page_config(page_title="Sports Upset Tracker", layout="wide")
 
 st.title("🏈 Sports Upset Tracker (MVP)")
