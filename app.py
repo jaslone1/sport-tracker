@@ -21,12 +21,25 @@ except:
     st.error("No data found. Run data_fetch.py and process.py first.")
     st.stop()
 
-# Past upsets
-st.subheader("Past Upsets")
-st.write("Columns in dataset:", df.columns.tolist())
-past_upsets = df[df["is_upset"] == True]
-st.dataframe(past_upsets[["home_team", "away_team", "winner", "is_upset"]])
+# Load data
+df = pd.read_csv("data/upsets.csv")
 
+st.title("🏈 Sports Upset Tracker")
+
+# Show what columns exist
+st.write("Columns in dataset:", df.columns.tolist())
+
+# Safe selection for Past Upsets
+if "is_upset" in df.columns:
+    past_upsets = df[df["is_upset"] == True]
+else:
+    past_upsets = df.copy()  # fallback
+
+# Pick only columns that exist
+columns_to_show = [c for c in ["home_team", "away_team", "winner", "is_upset"] if c in past_upsets.columns]
+
+st.subheader("Past Upsets")
+st.dataframe(past_upsets[columns_to_show] if columns_to_show else past_upsets)
 # Summary chart
 st.subheader("Upsets by Week (demo)")
 if "week" in df.columns:
