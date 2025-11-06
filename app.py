@@ -150,6 +150,52 @@ conference_analysis.columns = ['Conference', 'Total Games', 'Home Win Rate',
 
 st.dataframe(conference_analysis.round(2))
 
+# =========================================================================
+# ALL-UP TEAM ANALYSIS (Regardless of Venue)
+# =========================================================================
+st.header("🌐 All-Up Team Performance Summary")
+st.markdown("This table summarizes each team's performance across all games (Home & Away), sorted by **Overall Win Rate**.")
+st.dataframe(all_up_df.round(2)) # Note: This uses the filtered 'all_up_df'
+
+# ... (REST OF THE DASHBOARD CODE BELOW, using df_filtered for all subsequent tables) ...
+
+# --- Visualization: Point Differential ---
+st.header("Point Differential Distribution (Home Team Perspective)")
+st.bar_chart(df_filtered['point_differential'].value_counts().sort_index().head(51).tail(51))
+st.caption("A histogram showing how often different margins of victory occur (Home Score - Away Score).")
+
+# --- Elo Analysis: Top/Bottom Performers ---
+st.header("📈 Game Performance Relative to Expectation (Elo Change)")
+
+# Top Home Elo Gain
+st.subheader("Top 50 Games with Highest Home Elo Gain (Overachievers)")
+elo_gain_df = df_filtered.sort_values(by='home_elo_change', ascending=False).head(50) 
+st.dataframe(elo_gain_df[['homeTeam', 'awayTeam', 'homePoints', 'awayPoints', 
+                          'homePregameElo', 'home_elo_change', 'point_differential']].reset_index(drop=True))
+
+# Bottom Home Elo Loss
+st.subheader("Top 50 Games with Highest Home Elo Loss (Underachievers)")
+elo_loss_df = df_filtered.sort_values(by='home_elo_change', ascending=True).head(50) 
+st.dataframe(elo_loss_df[['homeTeam', 'awayTeam', 'homePoints', 'awayPoints', 
+                          'homePregameElo', 'home_elo_change', 'point_differential']].reset_index(drop=True))
+
+# --- Conference Analysis (Grouping) ---
+# Note: This table is not as useful when a single conference is selected, but we leave it for consistency
+st.header("🏆 Home Conference Performance Summary")
+
+# Recalculate Conference Analysis (uses df_filtered)
+conference_analysis = df_filtered.groupby('homeConference').agg(
+    Total_Games=('home_win', 'count'),  
+    Home_Win_Rate=('home_win', 'mean'),
+    Avg_Home_Elo_Change=('home_elo_change', 'mean'),
+    Avg_Point_Differential=('point_differential', 'mean')
+).sort_values(by='Home_Win_Rate', ascending=False).reset_index()
+
+conference_analysis.columns = ['Conference', 'Total Games', 'Home Win Rate', 
+                               'Avg Home Elo Change', 'Avg Point Differential']
+
+st.dataframe(conference_analysis.round(2))
+
 # --- Raw Data Display (Optional) ---
 if st.checkbox('Show Raw Data'):
     st.subheader('Raw Data')
