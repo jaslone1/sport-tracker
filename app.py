@@ -310,6 +310,7 @@ if st.checkbox('Show Raw Data Table'):
     # 5. Final Formatting
     # Ensure Conference is correct (use the most frequent value or first value)
     all_up_analysis['Conference'] = all_games_df.groupby('Team')['Conference'].apply(lambda x: x.mode()[0] if not x.mode().empty else 'N/A')
+    # ... (Code around the end of the function) ...
     all_up_analysis['Point_Diff_Per_Game'] = all_up_analysis['Avg_Points_Scored'] - all_up_analysis['Avg_Points_Allowed']
     all_up_analysis = all_up_analysis.reset_index()
     all_up_analysis = all_up_analysis[[
@@ -317,8 +318,7 @@ if st.checkbox('Show Raw Data Table'):
         'Avg_Points_Scored', 'Avg_Points_Allowed', 'Point_Diff_Per_Game', 'Net_Elo_Change'
     ]]
 
-   	return all_up_analysis
-
+    return all_up_analysis
 # --------------------------------------------------------------------------
 # --- Main Application Logic ---
 # --------------------------------------------------------------------------
