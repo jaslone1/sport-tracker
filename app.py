@@ -317,7 +317,7 @@ if st.checkbox('Show Raw Data Table'):
         'Avg_Points_Scored', 'Avg_Points_Allowed', 'Point_Diff_Per_Game', 'Net_Elo_Change'
     ]]
 
-   return all_up_analysis
+   	return all_up_analysis
 
 # --------------------------------------------------------------------------
 # --- Main Application Logic ---
