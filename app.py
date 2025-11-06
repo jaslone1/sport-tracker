@@ -1,54 +1,89 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
 import streamlit as st
 import pandas as pd
+import numpy as np
 
-df = pd.read_csv("data/upsets.csv")
-st.write("Columns in dataframe:", df.columns.tolist())
-st.set_page_config(page_title="Sports Upset Tracker", layout="wide")
+# --- Configuration ---
+st.set_page_config(
+    page_title="NCAA Game Data Analysis",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-st.title("🏈 Sports Upset Tracker (MVP)")
-st.markdown("This site highlights potential and past upsets based on odds vs. results.")
+@st.cache_data
+def load_data(path):
+    """Load the processed CSV data."""
+    try:
+        df = pd.read_csv(path)
+        # Ensure all necessary analytical columns are numeric
+        required_cols = ['point_differential', 'home_elo_change', 'home_win']
+        for col in required_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        return df
+    except FileNotFoundError:
+        st.error(f"Error: File not found at {path}. Please run the data processing script first.")
+        return pd.DataFrame()
 
-# Load processed data
-try:
-    df = pd.read_csv("data/upsets.csv")
-except:
-    st.error("No data found. Run data_fetch.py and process.py first.")
+# Load the data
+DATA_PATH = 'data/odds.csv'
+df = load_data(DATA_PATH)
+
+# Check if data loaded successfully
+if df.empty:
     st.stop()
 
-# Load data
-df = pd.read_csv("data/upsets.csv")
+# --- Title and Summary Stats ---
+st.title("🏈 NCAA Game Analysis: Key Metrics")
+st.markdown("Exploring the most important stats including **Point Differential** and **Performance vs. Expectation (Elo Change)**.")
 
-st.title("🏈 Sports Upset Tracker")
+col1, col2, col3 = st.columns(3)
 
-# Show what columns exist
-st.write("Columns in dataset:", df.columns.tolist())
+# Display Key Metrics
+col1.metric("Total Games Analyzed", f"{len(df):,}")
+col2.metric("Average Home Point Differential", f"{df['point_differential'].mean():.2f} pts", 
+            help="The average margin of victory for the home team.")
+col3.metric("Home Win Percentage", f"{df['home_win'].mean() * 100:.2f}%")
 
-# Safe selection for Past Upsets
-if "is_upset" in df.columns:
-    past_upsets = df[df["is_upset"] == True]
-else:
-    past_upsets = df.copy()  # fallback
+# --- Visualization: Point Differential ---
+st.header("Point Differential Distribution")
+st.markdown("A histogram showing how often different margins of victory occur. Zero is the most common!")
 
-# Pick only columns that exist
-columns_to_show = [c for c in ["home_team", "away_team", "winner", "is_upset"] if c in past_upsets.columns]
+# Create a histogram of the point differential
+st.bar_chart(df['point_differential'].value_counts().sort_index().head(51).tail(51))
+st.caption("Values range from -50 to +50 points.")
 
-st.subheader("Past Upsets")
-st.dataframe(past_upsets[columns_to_show] if columns_to_show else past_upsets)
-# Summary chart
-st.subheader("Upsets by Week (demo)")
-if "week" in df.columns:
-    upset_counts = df.groupby("week")["is_upset"].sum().reset_index()
-    st.bar_chart(upset_counts.set_index("week"))
+# --- Elo Analysis: Top/Bottom Performers ---
+st.header("📈 Performance Relative to Expectation (Elo Change)")
 
-# Upcoming games placeholder
-st.subheader("Upcoming Games (with odds)")
-if "start_date" in df.columns:
-    upcoming = df[df["winner"].isna()]
-    st.dataframe(upcoming[["home_team", "away_team", "start_date"]])
+# Top Home Elo Gain
+st.subheader("Top 10 Games with Highest Home Elo Gain (Overachievers)")
+elo_gain_df = df.sort_values(by='home_elo_change', ascending=False).head(10)
+st.dataframe(elo_gain_df[['homeTeam', 'awayTeam', 'homePoints', 'awayPoints', 
+                          'homePregameElo', 'home_elo_change', 'point_differential']].reset_index(drop=True))
 
+# Bottom Home Elo Loss
+st.subheader("Bottom 10 Games with Highest Home Elo Loss (Underachievers)")
+elo_loss_df = df.sort_values(by='home_elo_change', ascending=True).head(10)
+st.dataframe(elo_loss_df[['homeTeam', 'awayTeam', 'homePoints', 'awayPoints', 
+                          'homePregameElo', 'home_elo_change', 'point_differential']].reset_index(drop=True))
+
+# --- Conference Analysis (Grouping) ---
+st.header("🏆 Conference Performance Summary (Home Games)")
+
+# Recalculate Conference Analysis (as done in the correction)
+conference_analysis = df.groupby('homeConference').agg(
+    Total_Games=('home_win', 'count'),  
+    Home_Win_Rate=('home_win', 'mean'),
+    Avg_Home_Elo_Change=('home_elo_change', 'mean'),
+    Avg_Point_Differential=('point_differential', 'mean')
+).sort_values(by='Home_Win_Rate', ascending=False).reset_index()
+
+conference_analysis.columns = ['Conference', 'Total Games', 'Home Win Rate', 
+                               'Avg Home Elo Change', 'Avg Point Differential']
+
+st.dataframe(conference_analysis.round(2))
+
+# --- Raw Data Display (Optional) ---
+if st.checkbox('Show Raw Data'):
+    st.subheader('Raw Data')
+    st.dataframe(df)
