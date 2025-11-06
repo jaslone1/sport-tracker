@@ -133,7 +133,7 @@ st.sidebar.title("Data Filters")
 all_conferences = sorted(df['homeConference'].unique().tolist())
 all_conferences.insert(0, 'All Conferences')
 
-selected_conference = st.sidebar.selectbox(
+selected_conference = st.sidebar.multiselect(
     "Select Home Conference:", 
     all_conferences,
     help="Filters the data by the home team's conference."
