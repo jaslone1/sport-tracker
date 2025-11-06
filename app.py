@@ -4,7 +4,7 @@ import numpy as np
 
 # --- Configuration ---
 st.set_page_config(
-    page_title="Testing site for NCAA Game Data Analysis",
+    page_title="NCAA Game Data Analysis",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -33,7 +33,7 @@ if df.empty:
     st.stop()
 
 # --- Title and Summary Stats ---
-st.title("🏈 NCAA Game Analysis: Key Metrics")
+st.title("Testing Site for NCAA Game Analysis: Key Metrics")
 st.markdown("Exploring the most important stats including **Point Differential** and **Performance vs. Expectation (Elo Change)**.")
 
 col1, col2, col3 = st.columns(3)
@@ -56,14 +56,14 @@ st.caption("Values range from -50 to +50 points.")
 st.header("📈 Performance Relative to Expectation (Elo Change)")
 
 # Top Home Elo Gain
-st.subheader("Top 10 Games with Highest Home Elo Gain (Overachievers)")
-elo_gain_df = df.sort_values(by='home_elo_change', ascending=False).head(10)
+st.subheader("Top 50 Games with Highest Home Elo Gain (Overachievers)")
+elo_gain_df = df.sort_values(by='home_elo_change', ascending=False).head(50)
 st.dataframe(elo_gain_df[['homeTeam', 'awayTeam', 'homePoints', 'awayPoints', 
                           'homePregameElo', 'home_elo_change', 'point_differential']].reset_index(drop=True))
 
 # Bottom Home Elo Loss
-st.subheader("Bottom 10 Games with Highest Home Elo Loss (Underachievers)")
-elo_loss_df = df.sort_values(by='home_elo_change', ascending=True).head(10)
+st.subheader("Bottom 50 Games with Highest Home Elo Loss (Underachievers)")
+elo_loss_df = df.sort_values(by='home_elo_change', ascending=True).head(50)
 st.dataframe(elo_loss_df[['homeTeam', 'awayTeam', 'homePoints', 'awayPoints', 
                           'homePregameElo', 'home_elo_change', 'point_differential']].reset_index(drop=True))
 
