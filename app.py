@@ -4,7 +4,7 @@ import numpy as np
 
 # --- Configuration ---
 st.set_page_config(
-    page_title="NCAA Game Data Analysis",
+    page_title="Testing site for NCAA Game Data Analysis",
     layout="wide",
     initial_sidebar_state="expanded"
 )
