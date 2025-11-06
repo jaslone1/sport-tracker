@@ -35,6 +35,7 @@ if df.empty:
 # --- Title and Summary Stats ---
 st.title("Testing Site for NCAA Game Analysis: Key Metrics")
 st.markdown("Exploring the most important stats including **Point Differential** and **Performance vs. Expectation (Elo Change)**.")
+st.markdown("Currently only evaluating home team performance.")
 
 col1, col2, col3 = st.columns(3)
 
