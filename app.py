@@ -141,9 +141,9 @@ selected_conference = st.sidebar.multiselect(
 
 # Apply filter to the main DataFrame
 if selected_conference != 'All Conferences':
-    df_filtered = df[df['homeConference'] == selected_conference]
+    df_filtered = df[df['homeConference'].isin(selected_conference)]
 else:
-    df_filtered = df.copy()
+    df_filtered = df[0:0]
 
 # Recalculate All-Up Analysis only on the filtered set
 all_up_df = create_all_up_analysis(df_filtered)
