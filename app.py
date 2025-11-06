@@ -9,6 +9,10 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+# --- SEO META TAG INJECTION ---
+st.markdown("""
+    <meta name="description" content="NCAA FBS football data analysis tool displaying team performance, Elo ratings, win rates, and conference comparisons. Filterable by conference.">
+""", unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------
 # --- Data Loading and Filtering Functions ---
