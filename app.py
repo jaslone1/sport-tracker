@@ -1,10 +1,3 @@
-I got you. To ensure the fix for the `ValueError` (due to NaN/Inf values) is applied correctly and all previous updates (dual models, updated paths) are included, here is the complete, corrected `app.py` script.
-
-The critical fix is within the `get_upset_predictions` function, where we use `.fillna(0)` to clean the feature data right before prediction.
-
------
-
-## 💻 Complete and Corrected `app.py` Script
 
 ```python
 import streamlit as st
