@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+import joblib # <--- NEW: Import joblib to load the trained model
 
 # --- Configuration ---
 st.set_page_config(
@@ -36,11 +37,11 @@ def load_data(path):
                         'home_elo_change', 'home_win', 'away_elo_change', 'neutralSite']
         for col in numeric_cols:
              if col in df.columns:
-                # Coerce boolean 'neutralSite' to boolean/int for consistency
-                if col == 'neutralSite':
-                    df[col] = df[col].astype(bool) 
-                else:
-                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                 # Coerce boolean 'neutralSite' to boolean/int for consistency
+                 if col == 'neutralSite':
+                     df[col] = df[col].astype(bool) 
+                 else:
+                     df[col] = pd.to_numeric(df[col], errors='coerce')
         
         df.dropna(subset=['homePoints', 'awayPoints', 'homeConference', 'awayConference'], inplace=True)
         
@@ -154,11 +155,50 @@ def create_game_log_analysis(df):
     return final_log
 
 # --------------------------------------------------------------------------
+# --- NEW: Machine Learning Prediction Function ---
+# --------------------------------------------------------------------------
+
+@st.cache_data
+def get_upset_predictions(df_input):
+    """
+    Loads the trained XGBoost model and calculates the upset probability 
+    for each game based on pre-game Elo difference and home advantage.
+    """
+    try:
+        # Load the saved XGBoost model
+        model = joblib.load('ml_model/xgboost_upset_model.pkl')
+    except FileNotFoundError:
+        st.warning("ML model file not found at ml_model/xgboost_upset_model.pkl. Skipping ML predictions.")
+        return df_input.assign(upset_probability=0.0)
+
+    # 1. Feature Preparation (CRITICAL: MUST MATCH train_models.py)
+    
+    # Calculate initial Elo difference
+    df_input['elo_diff'] = df_input['homePregameElo'] - df_input['awayPregameElo']
+    
+    df_features = pd.DataFrame({
+        # Feature 1: Magnitude of the Elo difference
+        'abs_elo_diff': np.abs(df_input['elo_diff']),
+        # Feature 2: Home advantage (1 if not neutral, 0 if neutral)
+        'home_advantage': np.where(df_input['neutralSite'] == True, 0, 1),
+    })
+    
+    # 2. Predict the probability of an upset (Dog Win)
+    # [:, 1] extracts the probability of the positive class (1 = Upset)
+    upset_probs = model.predict_proba(df_features[['abs_elo_diff', 'home_advantage']])[:, 1]
+    
+    df_input['upset_probability'] = upset_probs
+    
+    return df_input
+
+
+# --------------------------------------------------------------------------
 # --- Main Application Logic ---
 # --------------------------------------------------------------------------
 
 DATA_PATH = 'data/odds.csv'
 df = load_data(DATA_PATH)
+df = get_upset_predictions(df) # <--- CALL THE PREDICTION FUNCTION HERE
 
 if df.empty:
     st.stop()
@@ -233,24 +273,44 @@ else:
 st.markdown("---")
 
 # -------------------------------------------------------------------------
-# --- 3. GAME PERFORMANCE (ELO) ---
+# --- 3. ML UPSET TRACKER --- <--- NEW DASHBOARD SECTION
+# -------------------------------------------------------------------------
+st.header("💥 Machine Learning Upset Tracker")
+st.markdown("Games where the ML model predicts the lower Elo team has the **highest probability of winning**.")
+
+# Filter for the top 50 games with the highest calculated upset probability from the filtered data
+upset_candidates = df_filtered.sort_values(by='upset_probability', ascending=False).head(50)
+
+st.dataframe(upset_candidates[[
+    'homeTeam', 
+    'awayTeam', 
+    'homePregameElo', 
+    'awayPregameElo', 
+    'upset_probability', 
+    'point_differential' # Show the final point diff as context
+]].round({'upset_probability': 3}), use_container_width=True)
+
+st.markdown("---") 
+
+# -------------------------------------------------------------------------
+# --- 4. GAME PERFORMANCE (ELO) --- (Section numbers adjusted)
 # -------------------------------------------------------------------------
 st.header("📈 Game Performance Relative to Expectation (Elo Change)")
 
 st.subheader("Top 50 Games with Highest Home Elo Gain (Overachievers)")
 elo_gain_df = df_filtered.sort_values(by='home_elo_change', ascending=False).head(50) 
 st.dataframe(elo_gain_df[['homeTeam', 'awayTeam', 'homePoints', 'awayPoints', 
-                          'homePregameElo', 'home_elo_change', 'point_differential']].reset_index(drop=True), use_container_width=True)
+                           'homePregameElo', 'home_elo_change', 'point_differential']].reset_index(drop=True), use_container_width=True)
 
 st.subheader("Top 50 Games with Highest Home Elo Loss (Underachievers)")
 elo_loss_df = df_filtered.sort_values(by='home_elo_change', ascending=True).head(50) 
 st.dataframe(elo_loss_df[['homeTeam', 'awayTeam', 'homePoints', 'awayPoints', 
-                          'homePregameElo', 'home_elo_change', 'point_differential']].reset_index(drop=True), use_container_width=True)
+                           'homePregameElo', 'home_elo_change', 'point_differential']].reset_index(drop=True), use_container_width=True)
 
 st.markdown("---")
 
 # -------------------------------------------------------------------------
-# --- 4. CONFERENCE & DISTRIBUTION ---
+# --- 5. CONFERENCE & DISTRIBUTION --- (Section numbers adjusted)
 # -------------------------------------------------------------------------
 col_conf, col_chart = st.columns([1, 2])
 
