@@ -1,3 +1,6 @@
 streamlit
 pandas
-requests
+numpy
+scikit-learn
+xgboost
+joblib
