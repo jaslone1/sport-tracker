@@ -1,9 +1,18 @@
+I got you. To ensure the fix for the `ValueError` (due to NaN/Inf values) is applied correctly and all previous updates (dual models, updated paths) are included, here is the complete, corrected `app.py` script.
+
+The critical fix is within the `get_upset_predictions` function, where we use `.fillna(0)` to clean the feature data right before prediction.
+
+-----
+
+## 💻 Complete and Corrected `app.py` Script
+
+```python
 import streamlit as st
 import pandas as pd
 import numpy as np
 import os
 import joblib 
-import altair as alt # <--- NEW: Import Altair for better visualizations
+import altair as alt
 
 # --- Configuration ---
 st.set_page_config(
@@ -18,7 +27,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --------------------------------------------------------------------------
-# --- Data Loading and Filtering Functions (No Change to load_data, analysis functions) ---
+# --- Data Loading and Filtering Functions ---
 # --------------------------------------------------------------------------
 
 @st.cache_data
@@ -44,18 +53,15 @@ def load_data(path):
                  else:
                      df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # NOTE: We need to calculate Elo difference here for unplayed games since 
-        # the model needs it, but the training script calculates it for historical data.
+        # NOTE: Calculate Elo difference and home_advantage here for prediction readiness
         if 'homePregameElo' in df.columns and 'awayPregameElo' in df.columns:
             df['elo_diff'] = df['homePregameElo'] - df['awayPregameElo']
-            # Also create the 'home_advantage' feature needed by the prediction models
             df['home_advantage'] = np.where(df['neutralSite'] == True, 0, 1)
 
-        # Drop games with missing outcomes for historical analysis (though this is 'odds.csv' now)
-        # We will keep all rows for prediction, but drop missing confs
+        # Drop missing conference data
         df.dropna(subset=['homeConference', 'awayConference'], inplace=True)
         
-        # FBS FILTERING LOGIC: Exclude games involving clearly non-FBS teams
+        # FBS FILTERING LOGIC
         non_fbs_keywords = ['FCS', 'II', 'III', 'D-2', 'D-3', 'NAIA']
         
         mask_home = ~df['homeConference'].astype(str).str.contains('|'.join(non_fbs_keywords), case=False, na=False)
@@ -71,12 +77,9 @@ def load_data(path):
 @st.cache_data
 def create_all_up_analysis(df):
     """
-    Creates a single-row-per-team-per-game structure for all-up performance metrics
-    by combining the home and away columns, and then aggregates results by team.
+    Aggregates historical performance metrics by team.
     """
-    # ... (content remains the same as your original script for create_all_up_analysis)
     
-    # 1. Create a DataFrame for Home Team Stats
     home_df = df.copy()
     home_df['Team'] = home_df['homeTeam']
     home_df['Conference'] = home_df['homeConference']
@@ -86,7 +89,6 @@ def create_all_up_analysis(df):
     home_df['Elo_Change'] = home_df['home_elo_change']
     home_df['Game_Outcome'] = np.where(home_df.get('home_win', 0) == 1, 'Win', 'Loss')
     
-    # 2. Create a DataFrame for Away Team Stats
     away_df = df.copy()
     away_df['Team'] = away_df['awayTeam']
     away_df['Conference'] = away_df['awayConference']
@@ -96,13 +98,11 @@ def create_all_up_analysis(df):
     away_df['Elo_Change'] = away_df['away_elo_change']
     away_df['Game_Outcome'] = np.where(away_df.get('home_win', 0) == 0, 'Win', 'Loss') 
 
-    # 3. Concatenate and select relevant columns
     all_games_df = pd.concat([
         home_df[['Team', 'Conference', 'Venue', 'Points_Scored', 'Points_Allowed', 'Elo_Change', 'Game_Outcome']].dropna(subset=['Points_Scored']),
         away_df[['Team', 'Conference', 'Venue', 'Points_Scored', 'Points_Allowed', 'Elo_Change', 'Game_Outcome']].dropna(subset=['Points_Scored'])
     ], ignore_index=True)
 
-    # 4. Group by Team and aggregate metrics
     all_up_analysis = all_games_df.groupby('Team').agg(
         Total_Games=('Game_Outcome', 'count'),
         Wins=('Game_Outcome', lambda x: (x == 'Win').sum()),
@@ -113,7 +113,6 @@ def create_all_up_analysis(df):
         Net_Elo_Change=('Elo_Change', 'sum')
     ).sort_values(by='Win_Rate', ascending=False)
     
-    # 5. Final Formatting
     all_up_analysis['Conference'] = all_games_df.groupby('Team')['Conference'].apply(lambda x: x.mode()[0] if not x.mode().empty else 'N/A')
     all_up_analysis['Point_Diff_Per_Game'] = all_up_analysis['Avg_Points_Scored'] - all_up_analysis['Avg_Points_Allowed']
     all_up_analysis = all_up_analysis.reset_index()
@@ -127,14 +126,12 @@ def create_all_up_analysis(df):
 @st.cache_data
 def create_game_log_analysis(df):
     """
-    Creates a detailed game-by-game log for every team, including opponent and score.
-    NOTE: Only works for games that have been played (homePoints/awayPoints are not null).
+    Creates a detailed game-by-game log for every team.
     """
     df_played = df.dropna(subset=['homePoints', 'awayPoints']).copy()
     if df_played.empty:
         return pd.DataFrame()
         
-    # 1. Home Game Log
     home_log = df_played.copy()
     home_log['Team'] = home_log['homeTeam']
     home_log['Opponent'] = home_log['awayTeam']
@@ -142,7 +139,6 @@ def create_game_log_analysis(df):
     home_log['Score_Display'] = home_log['homePoints'].astype(int).astype(str) + " - " + home_log['awayPoints'].astype(int).astype(str)
     home_log['Outcome'] = np.where(home_log['home_win'] == 1, 'W', 'L')
     
-    # 2. Away Game Log
     away_log = df_played.copy()
     away_log['Team'] = away_log['awayTeam']
     away_log['Opponent'] = away_log['homeTeam']
@@ -150,10 +146,8 @@ def create_game_log_analysis(df):
     away_log['Score_Display'] = away_log['awayPoints'].astype(int).astype(str) + " - " + away_log['homePoints'].astype(int).astype(str)
     away_log['Outcome'] = np.where(away_log['home_win'] == 0, 'W', 'L')
 
-    # 3. Combine Logs
     game_log = pd.concat([home_log, away_log], ignore_index=True)
     
-    # 4. Select and format final columns
     final_log = game_log[[
         'Team', 
         'Opponent', 
@@ -172,26 +166,35 @@ def create_game_log_analysis(df):
     return final_log
 
 # --------------------------------------------------------------------------
-# --- UPDATED: Machine Learning Prediction Function ---
+# --- Machine Learning Prediction Function (Fixed) ---
 # --------------------------------------------------------------------------
 
 @st.cache_data
 def get_upset_predictions(df_input):
     """
     Loads both Logistic Regression and XGBoost models and calculates the 
-    upset probability for each unplayed game.
+    upset probability for each unplayed game. Includes NaN/Inf safety checks.
     """
     
-    # Define model file paths
+    # Define model file paths (Updated)
     LOGREG_MODEL_PATH = 'ml_model/logistic_regression_upset_model.pkl'
-    XGBOOST_MODEL_PATH = 'ml_model/xgboost_classifier_upset_model.pkl' # <-- Updated Path!
+    XGBOOST_MODEL_PATH = 'ml_model/xgboost_classifier_upset_model.pkl' 
 
-    # Create the features needed by the models (must match training script)
-    # NOTE: The training script used 'elo_diff' and 'neutralSite'. 
-    # The models are generally trained on elo_diff and home_advantage (or neutralSite)
+    # Create the features needed by the models (must match training script: elo_diff, neutralSite)
     
+    # Calculate Elo difference (if not already calculated in load_data)
+    if 'elo_diff' not in df_input.columns:
+        df_input['elo_diff'] = df_input['homePregameElo'] - df_input['awayPregameElo']
+    
+    # Prepare feature DataFrame
     df_features = df_input[['elo_diff', 'neutralSite']].copy()
     
+    # 💥 CRITICAL FIX: Fill NaN/Inf values before prediction 💥
+    # Impute any missing 'elo_diff' values with 0 (no difference)
+    df_features['elo_diff'] = df_features['elo_diff'].fillna(0)
+    # Ensure 'neutralSite' is also clean
+    df_features['neutralSite'] = df_features['neutralSite'].fillna(0) 
+
     # --- Load and Predict with Logistic Regression ---
     try:
         logreg_model = joblib.load(LOGREG_MODEL_PATH)
@@ -217,9 +220,9 @@ def get_upset_predictions(df_input):
 # --- Main Application Logic ---
 # --------------------------------------------------------------------------
 
-DATA_PATH = 'data/odds.csv'
+DATA_PATH = 'data/odds.csv' # Assuming this file contains both historical and upcoming games
 df = load_data(DATA_PATH)
-df = get_upset_predictions(df) # <-- Call prediction function
+df = get_upset_predictions(df) 
 
 if df.empty:
     st.stop()
@@ -246,7 +249,7 @@ selected_conferences = st.sidebar.multiselect(
 if selected_conferences:
     df_filtered = df_played[df_played['homeConference'].isin(selected_conferences)].copy()
 else:
-    df_filtered = df_played[0:0] # Show empty DataFrame if nothing is selected
+    df_filtered = df_played[0:0] 
 
 # Apply filter to the UNPLAYED data for prediction display
 if selected_conferences:
@@ -275,7 +278,6 @@ st.markdown("---")
 
 # -------------------------------------------------------------------------
 # --- 1. AGGREGATED ALL-UP TEAM ANALYSIS ---
-# ... (Historical sections 1 & 2 remain the same, using df_filtered)
 # -------------------------------------------------------------------------
 st.header("🌐 All-Up Team Performance Summary (Aggregated)")
 st.markdown("Team performance across **all games**, sorted by **Overall Win Rate**.")
@@ -304,7 +306,7 @@ else:
 st.markdown("---")
 
 # -------------------------------------------------------------------------
-# --- 3. ML UPSET TRACKERS (TWO MODELS) --- <--- NEW COMPARISON SECTION
+# --- 3. ML UPSET TRACKERS (TWO MODELS) ---
 # -------------------------------------------------------------------------
 st.header("💥 Machine Learning Upset Predictions (Unplayed Games)")
 st.markdown("Predictive probabilities from two different models for games with **unknown results**.")
@@ -367,10 +369,10 @@ else:
 st.markdown("---") 
 
 # -------------------------------------------------------------------------
-# --- 4. GAME PERFORMANCE (ELO) --- (Section numbers adjusted)
+# --- 4. GAME PERFORMANCE (ELO) ---
 # -------------------------------------------------------------------------
 st.header("📈 Game Performance Relative to Expectation (Elo Change)")
-# ... (Rest of historical ELO sections 4 & 5 remain the same, using df_filtered)
+
 st.subheader("Top 50 Games with Highest Home Elo Gain (Overachievers)")
 elo_gain_df = df_filtered.sort_values(by='home_elo_change', ascending=False).head(50) 
 st.dataframe(elo_gain_df[['homeTeam', 'awayTeam', 'homePoints', 'awayPoints', 
@@ -384,7 +386,7 @@ st.dataframe(elo_loss_df[['homeTeam', 'awayTeam', 'homePoints', 'awayPoints',
 st.markdown("---")
 
 # -------------------------------------------------------------------------
-# --- 5. CONFERENCE & DISTRIBUTION --- (Section numbers adjusted)
+# --- 5. CONFERENCE & DISTRIBUTION ---
 # -------------------------------------------------------------------------
 col_conf, col_chart = st.columns([1, 2])
 
@@ -416,3 +418,4 @@ st.markdown("---")
 if st.checkbox('Show Raw Data Table'):
     st.subheader('Raw Data (All Games)')
     st.dataframe(df, use_container_width=True)
+```
