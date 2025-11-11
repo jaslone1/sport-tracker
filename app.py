@@ -4,6 +4,7 @@ import numpy as np
 import os
 import joblib
 import altair as alt
+import json
 from pathlib import Path # Import Path for easier file handling
 
 # --- Configuration ---
@@ -208,13 +209,64 @@ def get_upset_predictions(df_input):
     return df_input
 
 # --------------------------------------------------------------------------
+# --- NEW: PyTorch Model Artifact Loading Function ---
+# --------------------------------------------------------------------------
+
+@st.cache_data
+def load_pytorch_artifacts(model_dir):
+    """
+    Loads all saved artifacts from the PyTorch training run.
+    """
+    PYTORCH_DIR = Path(model_dir)
+    artifacts = {}
+
+    # Load CSVs
+    try:
+        artifacts['test_metrics'] = pd.read_csv(PYTORCH_DIR / "test_metrics.csv")
+    except FileNotFoundError:
+        # Fallback to .json if .csv not found (based on user's folder list)
+        try:
+            artifacts['test_metrics'] = pd.read_json(PYTORCH_DIR / "test_metrics.json", lines=True)
+        except Exception:
+             artifacts['test_metrics'] = None
+    
+    try:
+        artifacts['history'] = pd.read_csv(PYTORCH_DIR / "history.csv")
+    except Exception:
+        artifacts['history'] = None
+        
+    try:
+        artifacts['feature_importance'] = pd.read_csv(PYTORCH_DIR / "feature_importance.csv")
+    except Exception:
+        artifacts['feature_importance'] = None
+
+    # Load Text Report
+    try:
+        with open(PYTORCH_DIR / "classification_report.txt", "r") as f:
+            artifacts['classification_report'] = f.read()
+    except Exception:
+        artifacts['classification_report'] = None
+
+    # Store paths to images (we'll load them directly in the app)
+    artifacts['loss_curve_png'] = PYTORCH_DIR / "loss_curve.png"
+    artifacts['roc_curve_png'] = PYTORCH_DIR / "roc_curve.png"
+    artifacts['confusion_matrix_png'] = PYTORCH_DIR / "confusion_matrix.png"
+    
+    return artifacts
+
+
+# --------------------------------------------------------------------------
 # --- Main Application Logic ---
 # --------------------------------------------------------------------------
 
 DATA_PATH = 'data/odds.csv' # Assuming this file contains both historical and upcoming games
+PYTORCH_MODEL_DIR = 'ml_model/pytorch_training' # Path from your training script
 
 df = load_data(DATA_PATH)
 df = get_upset_predictions(df) 
+
+# Load the new PyTorch model artifacts
+pytorch_artifacts = load_pytorch_artifacts(PYTORCH_MODEL_DIR)
 
 if df.empty:
     st.stop()
@@ -371,7 +423,7 @@ st.dataframe(elo_gain_df[['homeTeam', 'awayTeam', 'homePoints', 'awayPoints',
                            'homePregameElo', 'home_elo_change', 'point_differential']].reset_index(drop=True), use_container_width=True)
 
 st.subheader("Top 50 Games with Highest Home Elo Loss (Underachievers)")
-elo_loss_df = df_filtered.sort_solutions(by='home_elo_change', ascending=True).head(50) 
+elo_loss_df = df_filtered.sort_values(by='home_elo_change', ascending=True).head(50) 
 st.dataframe(elo_loss_df[['homeTeam', 'awayTeam', 'homePoints', 'awayPoints', 
                            'homePregameElo', 'home_elo_change', 'point_differential']].reset_index(drop=True), use_container_width=True)
 
@@ -403,6 +455,111 @@ with col_chart:
     chart_data = df_filtered['point_differential'].value_counts().sort_index()
     chart_data = chart_data[chart_data.index.to_series().between(-50, 50, inclusive='both')]
     st.bar_chart(chart_data)
+
+
+st.markdown("---")
+
+# -------------------------------------------------------------------------
+# --- 6. NEW: PYTORCH MODEL PERFORMANCE REVIEW ---
+# -------------------------------------------------------------------------
+st.header("🔬 PyTorch Model Performance Review")
+st.markdown(f"Displaying training and evaluation artifacts from the PyTorch MLP model, loaded from `{PYTORCH_MODEL_DIR}`.")
+
+# --- 6.1: Test Metrics KPIs ---
+st.subheader("Test Set Performance Metrics")
+metrics_df = pytorch_artifacts.get('test_metrics')
+if metrics_df is not None and not metrics_df.empty:
+    # Extract first row of metrics
+    metrics = metrics_df.iloc[0]
+    
+    m_col1, m_col2, m_col3, m_col4, m_col5 = st.columns(5)
+    m_col1.metric("ROC AUC", f"{metrics.get('roc_auc', 0):.4f}")
+    m_col2.metric("Accuracy", f"{metrics.get('accuracy', 0):.4f}")
+    m_col3.metric("F1-Score", f"{metrics.get('f1', 0):.4f}")
+    m_col4.metric("Precision", f"{metrics.get('precision', 0):.4f}")
+    m_col5.metric("Recall", f"{metrics.get('recall', 0):.4f}")
+else:
+    st.warning(f"Could not load test metrics from `{PYTORCH_MODEL_DIR}/test_metrics.csv` (or `.json`).")
+
+# --- 6.2: Plots (Loss, ROC, Confusion) ---
+st.subheader("Evaluation Plots")
+plot_col1, plot_col2, plot_col3 = st.columns(3)
+
+with plot_col1:
+    st.markdown("**Training & Validation Loss**")
+    if pytorch_artifacts['loss_curve_png'].exists():
+        st.image(str(pytorch_artifacts['loss_curve_png']), use_column_width=True)
+    else:
+        st.info(f"Image not found: `loss_curve.png`")
+
+with plot_col2:
+    st.markdown("**ROC Curve (Test Set)**")
+    if pytorch_artifacts['roc_curve_png'].exists():
+        st.image(str(pytorch_artifacts['roc_curve_png']), use_column_width=True)
+    else:
+        st.info(f"Image not found: `roc_curve.png`")
+
+with plot_col3:
+    st.markdown("**Confusion Matrix (Test Set)**")
+    if pytorch_artifacts['confusion_matrix_png'].exists():
+        st.image(str(pytorch_artifacts['confusion_matrix_png']), use_column_width=True)
+    else:
+        st.info(f"Image not found: `confusion_matrix.png`")
+
+# --- 6.3: Training History & Feature Importance ---
+st.subheader("Training History & Feature Importance")
+hist_col, imp_col = st.columns(2)
+
+with hist_col:
+    st.markdown("**Training Loss vs. Validation Loss**")
+    history_df = pytorch_artifacts.get('history')
+    if history_df is not None:
+        # Melt dataframe for st.line_chart
+        history_melted = history_df.melt(
+            'epoch', 
+            var_name='metric', 
+            value_name='loss'
+        )
+        # Create Altair chart for better tooltips
+        chart = alt.Chart(history_melted).mark_line().encode(
+            x=alt.X('epoch', title='Epoch'),
+            y=alt.Y('loss', title='Loss', scale=alt.Scale(type='log')), # Use log scale for loss
+            color='metric',
+            tooltip=['epoch', 'metric', 'loss']
+        ).properties(
+            title='Training History'
+        ).interactive()
+        st.altair_chart(chart, use_container_width=True)
+    else:
+        st.warning(f"Could not load `{PYTORCH_MODEL_DIR}/history.csv`.")
+
+with imp_col:
+    st.markdown("**Permutation Feature Importance (Top 25)**")
+    importance_df = pytorch_artifacts.get('feature_importance')
+    if importance_df is not None:
+        # Get top 25 features
+        top_features = importance_df.sort_values(by="importance_mean", ascending=False).head(25)
+        
+        # Create Altair chart for horizontal bar plot
+        chart = alt.Chart(top_features).mark_bar().encode(
+            x=alt.X('importance_mean', title='Mean Importance (Score Decrease)'),
+            y=alt.Y('feature', title='Feature', sort='-x'), # Sort by importance
+            tooltip=['feature', 'importance_mean', 'importance_std']
+        ).properties(
+            title='Top 25 Most Important Features'
+        ).interactive()
+        st.altair_chart(chart, use_container_width=True)
+    else:
+        st.warning(f"Could not load `{PYTORCH_MODEL_DIR}/feature_importance.csv`.")
+
+# --- 6.4: Classification Report ---
+st.subheader("Detailed Classification Report")
+report_str = pytorch_artifacts.get('classification_report')
+if report_str:
+    st.code(report_str)
+else:
+    st.warning(f"Could not load `{PYTORCH_MODEL_DIR}/classification_report.txt`.")
+
 
 # --- Raw Data Display (Optional) ---
 st.markdown("---")
