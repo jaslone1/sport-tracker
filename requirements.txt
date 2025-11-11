@@ -9,3 +9,5 @@ torchvision
 torchaudio
 matplotlib
 seaborn
+plotly
+altair
