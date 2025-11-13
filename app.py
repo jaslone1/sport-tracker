@@ -7,12 +7,14 @@ import altair as alt
 import json
 from pathlib import Path # Import Path for easier file handling
 
-# --- Configuration ---
 st.set_page_config(
-    page_title="NCAA FBS Football Data Analysis",
+    page_title="NCAA FBS Football Overview",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+st.title("NCAA FBS Football Data Overview")
+st.caption("This page summarizes FBS-level game performance by team and conference.")
+
 
 # --- SEO META TAG INJECTION (Placed after config) ---
 st.markdown("""
