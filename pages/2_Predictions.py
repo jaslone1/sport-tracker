@@ -6,7 +6,7 @@ import joblib
 
 st.set_page_config(page_title="Predictions", layout="wide")
 
-st.title("🔮 Predictions")
+st.title("Predictions")
 st.markdown("Model-based **upset probability predictions** for upcoming FBS games.")
 
 # --- Load data and models ---
