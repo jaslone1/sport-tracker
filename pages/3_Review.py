@@ -5,7 +5,7 @@ from pathlib import Path
 
 st.set_page_config(page_title="Model Review", layout="wide")
 
-st.title("🔬 Model Review")
+st.title("Model Review")
 st.markdown("Review of the **PyTorch model performance**, feature importance, and training history.")
 
 # --- Load artifacts ---
