@@ -6,6 +6,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from pathlib import Path
+from datetime import datetime # Import datetime
 
 # --- 1. CONFIGURATION ---
 # IMPORTANT: Adjust this path based on where you run app.py relative to your artifacts
@@ -55,11 +56,20 @@ def load_all_artifacts():
 
         return scaler, label_encoders, feature_columns, model, INPUT_DIM
     except Exception as e:
-        st.error(f"Error loading model artifacts. Check if files exist in {OUT_DIR}. Error: {e}")
-        st.stop() # Stop the app if crucial files are missing
+        # In a Streamlit app, st.error and st.stop() would be used.
+        # In a non-Streamlit context (like a Colab cell), st.stop() might not work as expected,
+        # leading to an implicit return None and a TypeError on unpacking.
+        # Explicitly raise an error to provide a clearer failure message.
+        raise RuntimeError(f"Error loading model artifacts from {OUT_DIR}. Please ensure all model files exist. Error: {e}") from e
 
 # Load everything globally
-scaler, label_encoders, feature_columns, model, INPUT_DIM = load_all_artifacts()
+try:
+    scaler, label_encoders, feature_columns, model, INPUT_DIM = load_all_artifacts()
+except RuntimeError as e:
+    # Catch the RuntimeError and set variables to None to avoid program crash
+    # The main function will then display an error message in Streamlit if it runs.
+    print(f"Failed to load model artifacts: {e}")
+    scaler, label_encoders, feature_columns, model, INPUT_DIM = None, None, None, None, None
 
 # --- 4. PREDICTION FUNCTION (The core inference logic) ---
 def predict_winner(raw_game_data: dict) -> dict:
@@ -67,6 +77,9 @@ def predict_winner(raw_game_data: dict) -> dict:
     Processes raw game data using saved artifacts and makes a prediction.
 
     """
+    # Ensure artifacts are loaded before attempting prediction
+    if scaler is None or label_encoders is None or feature_columns is None or model is None or INPUT_DIM is None:
+        raise RuntimeError("Model artifacts are not loaded. Cannot make predictions.")
 
     # 1. Convert raw input dict to a one-row DataFrame
     raw_df = pd.DataFrame([raw_game_data])
@@ -142,6 +155,11 @@ def main():
     st.title("🏈 College Football Winner Prediction for Upcoming Games")
     st.markdown("Loading games from `data/games.csv` and predicting outcomes for uncompleted games.")
 
+    # Check if artifacts were loaded successfully. If not, display an error and stop.
+    if scaler is None or label_encoders is None or feature_columns is None or model is None or INPUT_DIM is None:
+        st.error("Model artifacts could not be loaded. Please ensure the `ml_model/pytorch_training_winner` directory and its contents (`winner_model.pth`, `scaler.joblib`, `feature_columns.json`, `label_encoders.joblib`) exist relative to the app's execution directory.")
+        st.stop() # Stop the Streamlit app if crucial artifacts are missing
+
     # --- CSV LOADING AND DUMMY CREATION ---
     csv_path = 'data/games.csv'
 
@@ -173,21 +191,23 @@ def main():
 
     try:
         games_df = pd.read_csv(csv_path)
+        # Convert 'startDate' to datetime objects and filter for future games
+        games_df['startDate'] = pd.to_datetime(games_df['startDate'])
+        future_games_df = games_df[games_df['startDate'] > datetime.now()].copy()
+
     except Exception as e:
-        st.error(f"Error loading games.csv: {e}")
+        st.error(f"Error loading or processing games.csv: {e}")
         st.stop()
 
-    st.subheader("Loaded Games Data")
-    st.dataframe(games_df.head())
+    st.subheader("Loaded Games Data (Filtered for Future Games)")
+    st.dataframe(future_games_df.head())
 
     # --- FILTER AND PREDICT FOR UNCOMPLETED GAMES ---
     st.header("Predictions for Upcoming (Uncompleted) Games")
     predictions = []
 
-    future_games_df = games_df[games_df['completed'] == False].copy()
-
     if future_games_df.empty:
-        st.warning("No uncompleted games found in `data/games.csv` to predict.")
+        st.warning("No future games found in `data/games.csv` to predict.")
     else:
         progress_text = "Making predictions for upcoming games. Please wait..."
         my_bar = st.progress(0, text=progress_text)
@@ -198,16 +218,16 @@ def main():
             raw_game_data = {
                 "season": row['season'],
                 "week": row['week'],
-                "completed": row['completed'],
+                "completed": False, # Set to False for future games
                 "neutralSite": row['neutralSite'],
                 "conferenceGame": row['conferenceGame'],
                 "attendance": row['attendance'],
                 "venueId": str(row['venueId']), # Ensure IDs are strings if label encoded
                 "homeId": str(row['homeId']),
-                "home_points": row['home_points'],
+                "home_points": 0, # Set to 0 for pre-game prediction
                 "homePregameElo": row['homePregameElo'],
                 "awayId": str(row['awayId']),
-                "away_points": row['away_points'],
+                "away_points": 0, # Set to 0 for pre-game prediction
                 "awayPregameElo": row['awayPregameElo'],
                 "excitementIndex": row['excitementIndex'],
                 "startDate": row['startDate'],
@@ -218,16 +238,17 @@ def main():
                 "seasonType": row['seasonType'],
             }
 
+            game_info = row.to_dict()
             try:
                 result = predict_winner(raw_game_data)
                 # Add original game info and prediction to results
-                game_info = row.to_dict()
                 game_info.update(result)
-                predictions.append(game_info)
             except Exception as e:
                 st.error(f"Error predicting for game at index {index}: {e}")
-                game_info = row.to_dict()
                 game_info['prediction_error'] = str(e)
+                game_info['home_team_win_prob'] = None # Ensure key exists
+                game_info['prediction'] = "Error"
+            finally:
                 predictions.append(game_info)
 
             # Update progress bar
@@ -243,7 +264,9 @@ def main():
                 'homeId', 'awayId', 'homePregameElo', 'awayPregameElo',
                 'home_team_win_prob', 'prediction', 'season', 'week', 'startDate'
             ]
-            st.dataframe(predictions_df[display_cols].style.format({'home_team_win_prob': '{:.2%}'}))
+            # Only format if 'home_team_win_prob' is not None
+            format_dict = {'home_team_win_prob': lambda x: f'{x:.2%}' if pd.notna(x) else 'N/A'}
+            st.dataframe(predictions_df[display_cols].style.format(format_dict))
         else:
             st.info("No predictions could be generated for uncompleted games.")
 
