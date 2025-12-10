@@ -195,7 +195,7 @@ def main():
         games_df['startDate'] = pd.to_datetime(games_df['startDate'])
         
         # Get the current time as a timezone-aware object (UTC)
-    now_utc = datetime.now(timezone.utc) 
+        now_utc = datetime.now(timezone.utc) 
     
     # Now the comparison is between two timezone-aware objects (datetime64[ns, UTC] vs. datetime[UTC])
     future_games_df = games_df[games_df['startDate'] > now_utc].copy()
