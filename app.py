@@ -139,119 +139,113 @@ def predict_winner(raw_game_data: dict) -> dict:
 # --- 5. STREAMLIT UI ---
 def main():
     st.set_page_config(page_title="CFB Winner Predictor", layout="wide")
-    st.title("🏈 College Football Winner Prediction")
-    st.markdown("Use the input features below to predict the outcome of a game.")
+    st.title("🏈 College Football Winner Prediction for Upcoming Games")
+    st.markdown("Loading games from `data/games.csv` and predicting outcomes for uncompleted games.")
 
-    # --- INPUT WIDGETS ---
-    st.header("Game & Team Statistics")
+    # --- CSV LOADING AND DUMMY CREATION ---
+    csv_path = 'data/games.csv'
 
-    with st.container():
-        col1, col2, col3 = st.columns(3)
+    # Ensure the directory exists
+    Path('data').mkdir(parents=True, exist_ok=True)
 
-        with col1:
-            st.subheader("Home Team Inputs")
-            home_elo = st.number_input("Home Pre-Game ELO", min_value=1000, max_value=2500, value=1700, key="h_elo")
-            home_id = st.text_input("Home Team ID (e.g., '52')", value='52', key="h_id")
-            home_classification = st.selectbox("Home Classification", ["fbs", "fcs", "ii", "iii"], key="h_class", index=0)
-            home_conference = st.text_input("Home Conference", value="SEC", key="h_conf")
+    if not Path(csv_path).exists():
+        st.info("`data/games.csv` not found. Creating a dummy file for demonstration.")
+        dummy_data = [
+            {'season': 2024, 'week': 1, 'completed': False, 'neutralSite': False, 'conferenceGame': True,
+             'attendance': 0, 'venueId': '1', 'homeId': '52', 'home_points': 0, 'homePregameElo': 1800,
+             'awayId': '230', 'away_points': 0, 'awayPregameElo': 1600, 'excitementIndex': 0.0,
+             'startDate': '2024-09-01', 'homeConference': 'SEC', 'awayConference': 'ACC',
+             'homeClassification': 'fbs', 'awayClassification': 'fbs', 'seasonType': 'regular'},
+            {'season': 2024, 'week': 1, 'completed': False, 'neutralSite': True, 'conferenceGame': False,
+             'attendance': 0, 'venueId': '2', 'homeId': '15', 'home_points': 0, 'homePregameElo': 1700,
+             'awayId': '123', 'away_points': 0, 'awayPregameElo': 1750, 'excitementIndex': 0.0,
+             'startDate': '2024-09-02', 'homeConference': 'Big Ten', 'awayConference': 'Big 12',
+             'homeClassification': 'fbs', 'awayClassification': 'fbs', 'seasonType': 'regular'},
+            {'season': 2023, 'week': 10, 'completed': True, 'neutralSite': False, 'conferenceGame': True,
+             'attendance': 80000, 'venueId': '3', 'homeId': '52', 'home_points': 28, 'homePregameElo': 1850,
+             'awayId': '15', 'away_points': 24, 'awayPregameElo': 1700, 'excitementIndex': 7.5,
+             'startDate': '2023-11-04', 'homeConference': 'SEC', 'awayConference': 'Big Ten',
+             'homeClassification': 'fbs', 'awayClassification': 'fbs', 'seasonType': 'regular'}
+        ]
+        dummy_df = pd.DataFrame(dummy_data)
+        dummy_df.to_csv(csv_path, index=False)
+        st.success("Dummy `data/games.csv` created!")
 
-        with col2:
-            st.subheader("Away Team Inputs")
-            away_elo = st.number_input("Away Pre-Game ELO", min_value=1000, max_value=2500, value=1500, key="a_elo")
-            away_id = st.text_input("Away Team ID (e.g., '230')", value='230', key="a_id")
-            away_classification = st.selectbox("Away Classification", ["fbs", "fcs", "ii", "iii"], key="a_class", index=0)
-            away_conference = st.text_input("Away Conference", value="ACC", key="a_conf")
+    try:
+        games_df = pd.read_csv(csv_path)
+    except Exception as e:
+        st.error(f"Error loading games.csv: {e}")
+        st.stop()
 
-        with col3:
-            st.subheader("Game Context")
-            game_location_select = st.selectbox("Game Location", ["Home", "Neutral"], key="location_select")
-            is_conference = st.checkbox("Is a Conference Game?", value=True, key="conf_game")
+    st.subheader("Loaded Games Data")
+    st.dataframe(games_df.head())
 
-            with st.expander("More Game Details (All features for model alignment)"):
-                season = st.number_input("Season Year", min_value=2000, max_value=2030, value=2024, key="season")
-                week = st.number_input("Week Number", min_value=1, max_value=16, value=1, key="week")
-                completed = st.checkbox("Game Completed (Assume True for pre-game prediction)", value=True, key="completed")
-                attendance = st.number_input("Attendance", min_value=0, value=0, key="attendance")
-                venue_id = st.text_input("Venue ID", value='0', key="venue_id")
-                excitement_index = st.number_input("Excitement Index", min_value=0.0, value=0.0, format="%.2f", key="excitement_index")
-                start_date = st.text_input("Start Date (YYYY-MM-DD)", value='2024-09-01', key="start_date")
-                season_type = st.selectbox("Season Type", ["regular", "postseason"], key="season_type", index=0)
+    # --- FILTER AND PREDICT FOR UNCOMPLETED GAMES ---
+    st.header("Predictions for Upcoming (Uncompleted) Games")
+    predictions = []
 
-                # These are typically game outcomes, but if the model expects them as input for alignment, provide defaults
-                # Their presence in feature_columns for a pre-game predictor is unusual and suggests potential model training considerations.
-                st.markdown("--- *Points are typically game outcomes, setting to 0 for pre-game prediction* ---")
-                home_points = st.number_input("Home Points (Default 0)", value=0, key="h_pts")
-                away_points = st.number_input("Away Points (Default 0)", value=0, key="a_pts")
+    future_games_df = games_df[games_df['completed'] == False].copy()
 
+    if future_games_df.empty:
+        st.warning("No uncompleted games found in `data/games.csv` to predict.")
+    else:
+        progress_text = "Making predictions for upcoming games. Please wait..."
+        my_bar = st.progress(0, text=progress_text)
 
-    # --- PREDICTION TRIGGER ---
-    st.markdown("---currentState")
-    if st.button("Calculate Prediction", use_container_width=True, type="primary"):
-        # 1. Assemble the raw input dictionary.
-        # The keys MUST match the column names of your training data (before pre-processing/scaling).
+        for i, (index, row) in enumerate(future_games_df.iterrows()):
+            # Convert row to dictionary for predict_winner function
+            # Ensure all required keys are present and correctly named
+            raw_game_data = {
+                "season": row['season'],
+                "week": row['week'],
+                "completed": row['completed'],
+                "neutralSite": row['neutralSite'],
+                "conferenceGame": row['conferenceGame'],
+                "attendance": row['attendance'],
+                "venueId": str(row['venueId']), # Ensure IDs are strings if label encoded
+                "homeId": str(row['homeId']),
+                "home_points": row['home_points'],
+                "homePregameElo": row['homePregameElo'],
+                "awayId": str(row['awayId']),
+                "away_points": row['away_points'],
+                "awayPregameElo": row['awayPregameElo'],
+                "excitementIndex": row['excitementIndex'],
+                "startDate": row['startDate'],
+                "homeConference": row['homeConference'],
+                "awayConference": row['awayConference'],
+                "homeClassification": row['homeClassification'],
+                "awayClassification": row['awayClassification'],
+                "seasonType": row['seasonType'],
+            }
 
-        raw_input = {
-            "homePregameElo": home_elo, # Corrected key name
-            "awayPregameElo": away_elo, # Corrected key name
-            "homeId": home_id,
-            "awayId": away_id,
-            "conferenceGame": is_conference,
+            try:
+                result = predict_winner(raw_game_data)
+                # Add original game info and prediction to results
+                game_info = row.to_dict()
+                game_info.update(result)
+                predictions.append(game_info)
+            except Exception as e:
+                st.error(f"Error predicting for game at index {index}: {e}")
+                game_info = row.to_dict()
+                game_info['prediction_error'] = str(e)
+                predictions.append(game_info)
 
-            # New features added
-            "season": season,
-            "week": week,
-            "completed": completed,
-            "attendance": attendance,
-            "venueId": venue_id,
-            "excitementIndex": excitement_index,
-            "startDate": start_date,
-            "homeConference": home_conference,
-            "awayConference": away_conference,
-            "homeClassification": home_classification,
-            "awayClassification": away_classification,
-            "seasonType": season_type,
+            # Update progress bar
+            my_bar.progress((i + 1) / len(future_games_df), text=f"Predicting game {i+1} of {len(future_games_df)}")
 
-            # Derived features
-            "neutralSite": True if game_location_select == "Neutral" else False,
+        my_bar.empty() # Clear the progress bar after completion
 
-            # Problematic 'outcome' features, defaulted to 0
-            "home_points": home_points,
-            "away_points": away_points,
-        }
-
-        # --- Debug Information (temporarily added for diagnosis) ---
-        with st.expander("💡 Debug Information (Click to expand)"):
-            st.write("**Features Expected by Model (`feature_columns`):**")
-            st.json(feature_columns)
-            st.write("**Raw Input provided from UI:**")
-            st.json(raw_input)
-            missing_features_in_input = [f for f in feature_columns if f not in raw_input and f not in [c for c in raw_input if raw_input[c] in [home_classification, away_classification, season_type]] # Exclude base categorical features that get OHE
-            ] # Adjusting check for features that are base for OHE
-            if missing_features_in_input:
-                st.warning(f"🚨 The following features expected by the model are MISSING from the UI input and will be set to 0: {missing_features_in_input}")
-            else:
-                st.success("✅ All model-expected features seem to be present in UI input or will be derived by the prediction function.")
-        # --- End Debug Information ---
-
-        # 2. Call the prediction function
-        try:
-            with st.spinner('Running PyTorch inference...'):
-                prediction_result = predict_winner(raw_input)
-
-            # 3. Display Results
-            st.subheader("Prediction Result")
-            st.info(f"Predicted Winner: **{prediction_result['prediction']}**")
-
-            prob_home = prediction_result['home_team_win_prob']
-            prob_away = 1.0 - prob_home
-
-            st.progress(prob_home, text=f"Home Win Probability: {prob_home:.2%}")
-            st.markdown(f"Away Win Probability: {prob_away:.2%}")
-
-        except ValueError as e:
-            st.error(f"Prediction failed due to data alignment error. Please check feature inputs. Details: {e}")
-        except Exception as e:
-            st.exception(e)
+        # Display predictions
+        if predictions:
+            predictions_df = pd.DataFrame(predictions)
+            # Select and reorder columns for display
+            display_cols = [
+                'homeId', 'awayId', 'homePregameElo', 'awayPregameElo',
+                'home_team_win_prob', 'prediction', 'season', 'week', 'startDate'
+            ]
+            st.dataframe(predictions_df[display_cols].style.format({'home_team_win_prob': '{:.2%}'}))
+        else:
+            st.info("No predictions could be generated for uncompleted games.")
 
 if __name__ == "__main__":
     main()
