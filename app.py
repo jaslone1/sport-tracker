@@ -182,7 +182,7 @@ def main():
 
 
     # --- PREDICTION TRIGGER ---
-    st.markdown("---")
+    st.markdown("---currentState")
     if st.button("Calculate Prediction", use_container_width=True, type="primary"):
         # 1. Assemble the raw input dictionary. 
         # The keys MUST match the column names of your training data (before pre-processing/scaling).
@@ -204,6 +204,19 @@ def main():
             # *For this example, you would need to manually ensure all 
             # features in `feature_columns` are accounted for in `raw_input`.*
         }
+        
+         # --- Debug Information (temporarily added for diagnosis) ---
+        with st.expander("💡 Debug Information (Click to expand)"):
+            st.write("**Features Expected by Model (`feature_columns`):**")
+            st.json(feature_columns)
+            st.write("**Raw Input provided from UI:**")
+            st.json(raw_input)
+            missing_features_in_input = [f for f in feature_columns if f not in raw_input]
+            if missing_features_in_input:
+                st.warning(f"🚨 The following features expected by the model are MISSING from the UI input and will be set to 0: {missing_features_in_input}")
+            else:
+                st.success("✅ All model-expected features seem to be present in UI input.")
+        # --- End Debug Information ---
         
         # 2. Call the prediction function
         try:
