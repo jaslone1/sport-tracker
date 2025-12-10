@@ -6,7 +6,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from pathlib import Path
-from datetime import datetime # Import datetime
+from datetime import datetime, timezone # Import datetime
 
 # --- 1. CONFIGURATION ---
 # IMPORTANT: Adjust this path based on where you run app.py relative to your artifacts
@@ -193,7 +193,12 @@ def main():
         games_df = pd.read_csv(csv_path)
         # Convert 'startDate' to datetime objects and filter for future games
         games_df['startDate'] = pd.to_datetime(games_df['startDate'])
-        future_games_df = games_df[games_df['startDate'] > datetime.now()].copy()
+        
+        # Get the current time as a timezone-aware object (UTC)
+    now_utc = datetime.now(timezone.utc) 
+    
+    # Now the comparison is between two timezone-aware objects (datetime64[ns, UTC] vs. datetime[UTC])
+    future_games_df = games_df[games_df['startDate'] > now_utc].copy()
 
     except Exception as e:
         st.error(f"Error loading or processing games.csv: {e}")
