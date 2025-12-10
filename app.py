@@ -197,8 +197,8 @@ def main():
         # Get the current time as a timezone-aware object (UTC)
         now_utc = datetime.now(timezone.utc) 
     
-    # Now the comparison is between two timezone-aware objects (datetime64[ns, UTC] vs. datetime[UTC])
-    future_games_df = games_df[games_df['startDate'] > now_utc].copy()
+        # Now the comparison is between two timezone-aware objects (datetime64[ns, UTC] vs. datetime[UTC])
+        future_games_df = games_df[games_df['startDate'] > now_utc].copy()
 
     except Exception as e:
         st.error(f"Error loading or processing games.csv: {e}")
