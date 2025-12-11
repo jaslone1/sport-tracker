@@ -1,17 +1,3 @@
-"""
-Train a PyTorch MLP to predict 'is_upset' from data/games.csv.
-
-Outputs saved to ml_model/pytorch_training/
-- upset_model.pth (PyTorch weights)
-- scaler.joblib (StandardScaler)
-- feature_columns.json (ordered feature list)
-- history.csv (epoch, train_loss, val_loss)
-- test_metrics.csv (accuracy, roc_auc, precision, recall, f1)
-- classification_report.txt
-- feature_importance.csv
-- PNG plots: loss_curve.png, roc_curve.png, confusion_matrix.png, feature_importance.png
-"""
-
 import os
 import json
 import time
@@ -43,7 +29,7 @@ from sklearn.inspection import permutation_importance
 # CONFIG
 # -----------------------------
 DATA_PATH = Path("data/games.csv")             # your existing CSV
-OUT_DIR = Path("ml_model/pytorch_training")
+OUT_DIR = Path("ml_model/pytorch_training_winner") # Changed output directory
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 RANDOM_SEED = 42
@@ -63,12 +49,12 @@ def plot_loss(history_df, path):
     """Plot the training and validation loss curves."""
     import matplotlib.pyplot as plt
     plt.figure(figsize=(8, 5))
-    
+
     # Convert to numpy arrays to ensure 1D numeric
     epochs = history_df["epoch"].to_numpy()
     train_loss = history_df["train_loss"].astype(float).to_numpy()
     val_loss = history_df["val_loss"].astype(float).to_numpy()
-    
+
     plt.plot(epochs, train_loss, label="train_loss", linewidth=2)
     plt.plot(epochs, val_loss, label="val_loss", linewidth=2)
     plt.xlabel("Epoch")
@@ -99,8 +85,9 @@ def plot_confusion(cm, out_path):
     plt.colorbar()
     plt.title("Confusion matrix")
     tick_marks = np.arange(2)
-    plt.xticks(tick_marks, ["not upset (0)", "upset (1)"], rotation=45)
-    plt.yticks(tick_marks, ["not upset (0)", "upset (1)"])
+    # Changed labels for winner prediction
+    plt.xticks(tick_marks, ["away team wins (0)", "home team wins (1)"], rotation=45)
+    plt.yticks(tick_marks, ["away team wins (0)", "home team wins (1)"])
     thresh = cm.max() / 2.
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
@@ -133,24 +120,31 @@ if not DATA_PATH.exists():
 df = pd.read_csv(DATA_PATH, low_memory=False)
 print(f"✅ Loaded {len(df):,} rows and {len(df.columns):,} columns")
 
-# Ensure target column exists
-if "is_upset" not in df.columns:
-    raise KeyError("Column 'is_upset' not found in games.csv. Script expects 'is_upset' as binary target.")
+# Filter out games without a winner (future games) and create the new binary target
+# 1 if home team wins, 0 if away team wins
+df_with_results = df.dropna(subset=["winner", "home_team", "away_team"]).copy()
+df_with_results["home_team_wins"] = (df_with_results["winner"] == df_with_results["home_team"]).astype(int)
 
-# Drop rows where target is missing
-df = df.dropna(subset=["is_upset"])
-df["is_upset"] = df["is_upset"].astype(int)
+if df_with_results.empty:
+    raise ValueError("No games with concrete results found after filtering for 'winner', 'home_team', 'away_team'. Cannot train model.")
+
+print(f"📊 Filtered to {len(df_with_results):,} games with concrete results for training.")
+
+# Define the target variable
+y = df_with_results["home_team_wins"].values.astype(int)
 
 # We will use only pre-game/non-leaky fields. Keep safe columns and transform others.
 # Columns to explicitly drop (leaky, large text, or irrelevant)
 drop_columns = [
     "id", "winner", "highlights", "notes", "homeLineScores", "awayLineScores",
     "homePoints", "awayPoints", "homePostgameWinProbability", "awayPostgameWinProbability",
-    "homePostgameElo", "awayPostgameElo", "startTimeTBD", "venue", "home_team", "away_team"
+    "homePostgameElo", "awayPostgameElo", "startTimeTBD", "venue", "home_team", "away_team","homeConference", "awayConference",
+    "is_upset", # Drop the old target if it exists
+    "home_team_wins" # Drop the new target from features
 ]
 # only drop those present
-drop_columns = [c for c in drop_columns if c in df.columns]
-df_features = df.drop(columns=drop_columns)
+drop_columns = [c for c in drop_columns if c in df_with_results.columns]
+df_features = df_with_results.drop(columns=drop_columns)
 
 # Convert boolean-ish columns to integers
 for c in df_features.columns:
@@ -168,7 +162,7 @@ to_label_encode = []
 to_numeric = []
 
 for col in df_features.columns:
-    if col == "is_upset":
+    if col == "home_team_wins": # Ensure the target is not processed as a feature
         continue
     dtype = df_features[col].dtype
     if dtype == "object":
@@ -220,8 +214,7 @@ print(f"🔧 Final feature matrix shape: {X_df.shape}")
 joblib.dump(feature_columns, OUT_DIR / "feature_columns.json")
 joblib.dump(label_encoders, OUT_DIR / "label_encoders.joblib")
 
-# Target
-y = df["is_upset"].values.astype(int)
+# Target is already defined above
 X = X_df.values.astype(float)
 
 # -----------------------------
@@ -253,12 +246,11 @@ with open(OUT_DIR / "feature_columns.json", "w") as f:
 def make_loader(X_arr, y_arr, batch_size=BATCH_SIZE, shuffle=True):
     X_t = torch.tensor(X_arr, dtype=torch.float32)
     y_t = torch.tensor(y_arr, dtype=torch.float32).unsqueeze(1)
-    ds = TensorDataset(X_t, y_t)
-    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle)
+    return TensorDataset(X_t, y_t), DataLoader(TensorDataset(X_t, y_t), batch_size=batch_size, shuffle=shuffle)
 
-train_loader = make_loader(X_train, y_train, shuffle=True)
-val_loader = make_loader(X_val, y_val, shuffle=False)
-test_loader = make_loader(X_test, y_test, shuffle=False)
+train_ds, train_loader = make_loader(X_train, y_train, shuffle=True)
+val_ds, val_loader = make_loader(X_val, y_val, shuffle=False)
+test_ds, test_loader = make_loader(X_test, y_test, shuffle=False)
 
 # -----------------------------
 # MODEL (MLP) - uses logits + BCEWithLogitsLoss
@@ -289,7 +281,7 @@ optimizer = optim.Adam(model.parameters(), lr=LR)
 # -----------------------------
 history = {"epoch": [], "train_loss": [], "val_loss": []}
 best_val_loss = float("inf")
-best_model_path = OUT_DIR / "upset_model_best.pth"
+best_model_path = OUT_DIR / "winner_model_best.pth" # Changed model name
 
 print("🚀 Starting training...")
 start_time = time.time()
@@ -334,7 +326,7 @@ elapsed = time.time() - start_time
 print(f"🏁 Training complete in {elapsed/60:.2f} minutes. Best val loss: {best_val_loss:.4f}")
 
 # Save final model as well
-final_model_path = OUT_DIR / "upset_model_final.pth"
+final_model_path = OUT_DIR / "winner_model_final.pth" # Changed model name
 torch.save(model.state_dict(), final_model_path)
 
 # Save history to CSV
@@ -450,7 +442,7 @@ plot_feature_importance(feat_imp_df, OUT_DIR / "feature_importance.png", top_n=2
 # SAVE ARTIFACTS
 # -----------------------------
 # Save final model weights (already saved best & final) - keep a standard name
-torch.save(best_model.state_dict(), OUT_DIR / "upset_model.pth")
+torch.save(best_model.state_dict(), OUT_DIR / "winner_model.pth") # Changed model name
 joblib.dump(scaler, OUT_DIR / "scaler.joblib")
 joblib.dump(feature_columns, OUT_DIR / "feature_columns_list.joblib")
 joblib.dump(label_encoders, OUT_DIR / "label_encoders.joblib")
