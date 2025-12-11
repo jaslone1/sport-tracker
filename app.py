@@ -203,10 +203,7 @@ def predict_winner(raw_game_data: dict) -> dict:
 
         # --- 9. Scale ---
         X_scaled = scaler.transform(X_aligned.values.astype(np.float32))
-            st.write("DEBUG — Full Scaled Input Vector (Check for extreme values):", X_scaled[0, :])
-        except Exception as e:
-            raise
-
+           
         # --- 10. Predict with PyTorch model ---
         with torch.no_grad():
             x_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(DEVICE)
