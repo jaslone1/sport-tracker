@@ -187,9 +187,9 @@ def predict_winner(raw_game_data: dict) -> dict:
             st.error("DEBUG — ALIGNED FEATURE VECTOR IS ALL ZEROS. This is usually a sign that one-hot/label-encoding naming does not match training or that feature_columns is incomplete.")
         else:
             pass
-            nonzero_cols = X_aligned.columns[nonzero_ix].tolist()
-            sample_preview = {col: float(X_aligned.loc[0, col]) for col in nonzero_cols[:50]}
-            st.write("DEBUG — Non-zero aligned features (sample):", sample_preview)
+            #nonzero_cols = X_aligned.columns[nonzero_ix].tolist()
+            #sample_preview = {col: float(X_aligned.loc[0, col]) for col in nonzero_cols[:50]}
+            #st.write("DEBUG — Non-zero aligned features (sample):", sample_preview)
 
         # --- 8. Sanity-check feature count matches model input dim ---
         if X_aligned.shape[1] != len(feature_columns):
@@ -197,14 +197,14 @@ def predict_winner(raw_game_data: dict) -> dict:
 
         # --- 9. Scale ---
         try:
-            #X_scaled = scaler.transform(X_aligned.values.astype(np.float32))
-            X_scaled_debug = X_aligned.values.astype(np.float32)
+            X_scaled = scaler.transform(X_aligned.values.astype(np.float32))
+            st.write("DEBUG — Full Scaled Input Vector (Check for extreme values):", X_scaled[0, :])
         except Exception as e:
             raise
 
         # --- 10. Predict with PyTorch model ---
         with torch.no_grad():
-            x_tensor = torch.tensor(X_scaled_debug, dtype=torch.float32).to(DEVICE)
+            x_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(DEVICE)
             logits = model(x_tensor).cpu().numpy().ravel()[0]
             prob = 1.0 / (1.0 + np.exp(-logits))
 
