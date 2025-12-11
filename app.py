@@ -120,7 +120,7 @@ def predict_winner(raw_game_data: dict) -> dict:
                     df_le[col] = df[col].apply(lambda x: encoder.get(x, 0)) # Use .get with default 0 for unseen categories
                 else:
                     # Fallback for unexpected encoder type
-                    st.warning(f"Unexpected encoder type for column '{col}'. Expected LabelEncoder or dict, got {type(encoder)}. Assigning 0.")
+                    # st.warning(f"Unexpected encoder type for column '{col}'. Expected LabelEncoder or dict, got {type(encoder)}. Assigning 0.")
                     df_le[col] = 0
             else:
                 # If the column is completely missing from the input, fill with 0
@@ -178,7 +178,7 @@ def predict_winner(raw_game_data: dict) -> dict:
         X_df_new = pd.concat([df_num, df_ohe, df_le_subset], axis=1).fillna(0)
 
         # --- DEBUG: show produced columns before alignment ---
-        st.write("DEBUG — Produced (pre-alignment) columns:", X_df_new.columns.tolist())
+        # st.write("DEBUG — Produced (pre-alignment) columns:", X_df_new.columns.tolist())
 
         # --- 7. Align to training feature columns ---
         # Use reindex for robust alignment, filling missing columns with 0 and dropping extra columns
@@ -191,35 +191,40 @@ def predict_winner(raw_game_data: dict) -> dict:
         extra_produced = sorted(list(produced_set - expected_set))
 
         if missing_expected:
-            st.warning(f"DEBUG — Expected feature columns missing from produced columns (they will be zeroed by reindex): {missing_expected[:50]}{'...' if len(missing_expected)>50 else ''}")
+            pass
+            # st.warning(f"DEBUG — Expected feature columns missing from produced columns (they will be zeroed by reindex): {missing_expected[:50]}{'...' if len(missing_expected)>50 else ''}")
         else:
-            st.write("DEBUG — No expected feature columns are missing from the produced columns.")
+            pass
+            # st.write("DEBUG — No expected feature columns are missing from the produced columns.")
 
         if extra_produced:
-            st.info(f"DEBUG — Produced columns not expected by model (these are ignored by reindex): {extra_produced[:50]}{'...' if len(extra_produced)>50 else ''}")
+            pass
+            # st.info(f"DEBUG — Produced columns not expected by model (these are ignored by reindex): {extra_produced[:50]}{'...' if len(extra_produced)>50 else ''}")
 
         # --- DEBUG: check if X_aligned is essentially all zeros ---
         aligned_values = X_aligned.iloc[0].values.astype(float)
         nonzero_ix = np.where(~np.isclose(aligned_values, 0.0))[0]
         if len(nonzero_ix) == 0:
-            st.error("DEBUG — ALIGNED FEATURE VECTOR IS ALL ZEROS. This is usually a sign that one-hot/label-encoding naming does not match training or that feature_columns is incomplete.")
+            pass
+            # st.error("DEBUG — ALIGNED FEATURE VECTOR IS ALL ZEROS. This is usually a sign that one-hot/label-encoding naming does not match training or that feature_columns is incomplete.")
         else:
             # show a sparse sample of non-zero features for inspection
-            nonzero_cols = X_aligned.columns[nonzero_ix].tolist()
-            sample_preview = {col: float(X_aligned.loc[0, col]) for col in nonzero_cols[:50]}
-            st.write("DEBUG — Non-zero aligned features (sample):", sample_preview)
+            pass
+            # nonzero_cols = X_aligned.columns[nonzero_ix].tolist()
+            # sample_preview = {col: float(X_aligned.loc[0, col]) for col in nonzero_cols[:50]}
+            # st.write("DEBUG — Non-zero aligned features (sample):", sample_preview)
 
         # --- 8. Sanity-check feature count matches model input dim ---
         if X_aligned.shape[1] != len(feature_columns):
             # This should never happen with reindex, but good for a final check
-            st.error(f"DEBUG — Feature column count mismatch after alignment: Expected {len(feature_columns)} columns, but aligned has {X_aligned.shape[1]}.")
+            # st.error(f"DEBUG — Feature column count mismatch after alignment: Expected {len(feature_columns)} columns, but aligned has {X_aligned.shape[1]}.")
             raise ValueError(f"Feature count mismatch: Expected {len(feature_columns)}, got {X_aligned.shape[1]}")
 
         # --- 9. Scale ---
         try:
             X_scaled = scaler.transform(X_aligned.values.astype(np.float32))
         except Exception as e:
-            st.error(f"Error during scaling input features: {e}")
+            # st.error(f"Error during scaling input features: {e}")
             raise
 
         # --- 10. Predict with PyTorch model ---
@@ -229,8 +234,8 @@ def predict_winner(raw_game_data: dict) -> dict:
             prob = 1.0 / (1.0 + np.exp(-logits))
 
         # --- DEBUG: print raw model outputs ---
-        st.write(f"DEBUG — raw logit: {logits}")
-        st.write(f"DEBUG — home win probability (sigmoid): {prob:.12f}")
+        # st.write(f"DEBUG — raw logit: {logits}")
+        # st.write(f"DEBUG — home win probability (sigmoid): {prob:.12f}")
 
         # final interpretation
         prediction_text = "Home Team Wins" if prob >= 0.5 else "Away Team Wins"
