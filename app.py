@@ -209,7 +209,7 @@ def predict_winner(raw_game_data: dict) -> dict:
 
         # final interpretation
         # Calculate the probability of the home team winning
-        home_win_prob = 1.0 - prob 
+        home_win_prob = prob 
         
         # Determine the winner based on the home team's probability
         prediction_text = "Home Team Wins" if home_win_prob >= 0.5 else "Away Team Wins"
