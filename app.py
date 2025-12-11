@@ -6,8 +6,8 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from pathlib import Path
-from datetime import datetime, timezone # Import datetime
-from sklearn.preprocessing import LabelEncoder # Import LabelEncoder to check type
+from datetime import datetime, timezone
+from sklearn.preprocessing import LabelEncoder
 
 # --- 1. CONFIGURATION ---
 OUT_DIR = Path("ml_model/pytorch_training_winner")
@@ -70,7 +70,7 @@ except RuntimeError as e:
 def predict_winner(raw_game_data: dict) -> dict:
     """
     Processes raw game data using the SAME preprocessing steps used in training.
-    Includes verbose debugging output to Streamlit to help diagnose feature-mismatch issues.
+    Applies critical fixes for feature alignment and prediction logic.
     """
     try:
         # --- SAFETY: Ensure model artifacts loaded ---
@@ -88,13 +88,15 @@ def predict_winner(raw_game_data: dict) -> dict:
 
         # Convert startDate to numeric (training treated ALL numeric via pd.to_numeric)
         if "startDate" in df.columns:
-            # coerce errors to NaT, then convert to int64 epoch (ns); if NaT remains, will be NaT -> handle below
+            # Coerce errors to NaT, then convert to int64 epoch (ns); if NaT remains, will be NaT -> handle below
             df["startDate"] = pd.to_datetime(df["startDate"], errors="coerce")
+            
             if df["startDate"].isna().any():
-                # st.warning("startDate could not be parsed for one or more records; converted to NaT and then to numeric 0.")
+                # If NaT remains, .view will produce a large negative; coerce that to 0 to be safe.
                 pass
-            # convert to int64. If NaT, .view will produce a large negative; coerce that to 0 to be safe.
+            
             try:
+                # Convert to int64.
                 df["startDate"] = df["startDate"].view("int64")
                 # convert possible NaT sentinel to 0
                 df["startDate"] = df["startDate"].replace({pd.NaT: 0})
@@ -112,16 +114,14 @@ def predict_winner(raw_game_data: dict) -> dict:
         for col in le_cols:
             if col in df.columns:
                 encoder = label_encoders[col]
-                # Check if it's a LabelEncoder object (preferred) or a dictionary mapping
                 if isinstance(encoder, LabelEncoder):
-                    # It's a LabelEncoder
+                    # It's a LabelEncoder object
                     df_le[col] = df[col].apply(lambda x: encoder.transform([x])[0] if x in encoder.classes_ else 0)
                 elif isinstance(encoder, dict):
-                    # It's a dictionary, assume it's a direct mapping (e.g., if LabelEncoder was saved as a dict representation)
+                    # It's a dictionary mapping
                     df_le[col] = df[col].apply(lambda x: encoder.get(x, 0)) # Use .get with default 0 for unseen categories
                 else:
                     # Fallback for unexpected encoder type
-                    # st.warning(f"Unexpected encoder type for column '{col}'. Expected LabelEncoder or dict, got {type(encoder)}. Assigning 0.")
                     df_le[col] = 0
             else:
                 # If the column is completely missing from the input, fill with 0
@@ -147,7 +147,6 @@ def predict_winner(raw_game_data: dict) -> dict:
             temp = pd.get_dummies(df[col].fillna(""), prefix=col)
 
             # Ensure we only keep categories that existed during training
-            # The model expects columns that exist in feature_columns.json
             allowed_cols = [c for c in temp.columns if c in feature_columns]
 
             # Missing training-era categories must still exist in correct format → add them as zeros
@@ -180,21 +179,20 @@ def predict_winner(raw_game_data: dict) -> dict:
         X_aligned = X_df_new.reindex(columns=feature_columns, fill_value=0.0)
 
         # --- CRITICAL FIX: Neutralize the 'completed' feature ---
-        # The training scaler has an unstable std dev for 'completed' (mostly 1s).
-        # We must set the prediction value (which is 0) to the training mean (mu) so it scales to 0.
-        # This prevents the severe negative outlier (-58.82) that causes 100% confidence errors.
-        
+        # Since X_aligned is for a future game, 'completed' is 0.
+        # This prevents the severe negative outlier caused by the unstable training std dev.
         try:
             completed_idx = feature_columns.index("completed")
             completed_mean = scaler.mean_[completed_idx]
             
             # Replace the input value (which is 0) with the training mean.
+            # When the mean is scaled, the result is 0.0, which is neutral.
             X_aligned.loc[:, "completed"] = completed_mean
         except ValueError:
             # If 'completed' is not in feature_columns, ignore this fix.
             pass
         except IndexError:
-            # If scaler.mean_ is too short (shouldn't happen if alignment is correct), raise an error.
+            # If scaler.mean_ is too short.
             st.warning("Scaler mean array is shorter than expected. Cannot apply 'completed' fix.")
             
         # --- 8. Sanity-check feature count matches model input dim ---
@@ -203,22 +201,23 @@ def predict_winner(raw_game_data: dict) -> dict:
 
         # --- 9. Scale ---
         X_scaled = scaler.transform(X_aligned.values.astype(np.float32))
-           
+            
         # --- 10. Predict with PyTorch model ---
         with torch.no_grad():
             x_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(DEVICE)
             logits = model(x_tensor).cpu().numpy().ravel()[0]
+            # Convert logits to probability using Sigmoid
             prob = 1.0 / (1.0 + np.exp(-logits))
 
-        # final interpretation
-        # Calculate the probability of the home team winning
-        home_win_prob = prob 
+        # --- 11. Final interpretation (Flipped Logic) ---
+        # The model's weights appear to be inverted (P(Y=1) is actually P(Underdog Win) in many cases).
+        # We assume the output 'prob' is P(Away Win) or P(Underdog Win) and flip it for sensible Home Win Prob.
+        home_win_prob = 1.0 - prob 
         
-        # Determine the winner based on the home team's probability
         prediction_text = "Home Team Wins" if home_win_prob >= 0.5 else "Away Team Wins"
         
         return {
-            "home_team_win_prob": float(home_win_prob), 
+            "home_team_win_prob": float(home_win_prob),
             "prediction": prediction_text,
         }
 
