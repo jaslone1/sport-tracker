@@ -179,25 +179,30 @@ def predict_winner(raw_game_data: dict) -> dict:
         # Use reindex for robust alignment, filling missing columns with 0 and dropping extra columns
         X_aligned = X_df_new.reindex(columns=feature_columns, fill_value=0.0)
 
-        # --- DEBUG: check if X_aligned is essentially all zeros ---
-        aligned_values = X_aligned.iloc[0].values.astype(float)
-        nonzero_ix = np.where(~np.isclose(aligned_values, 0.0))[0]
-        if len(nonzero_ix) == 0:
+        # --- CRITICAL FIX: Neutralize the 'completed' feature ---
+        # The training scaler has an unstable std dev for 'completed' (mostly 1s).
+        # We must set the prediction value (which is 0) to the training mean (mu) so it scales to 0.
+        # This prevents the severe negative outlier (-58.82) that causes 100% confidence errors.
+        
+        try:
+            completed_idx = feature_columns.index("completed")
+            completed_mean = scaler.mean_[completed_idx]
+            
+            # Replace the input value (which is 0) with the training mean.
+            X_aligned.loc[:, "completed"] = completed_mean
+        except ValueError:
+            # If 'completed' is not in feature_columns, ignore this fix.
             pass
-            st.error("DEBUG — ALIGNED FEATURE VECTOR IS ALL ZEROS. This is usually a sign that one-hot/label-encoding naming does not match training or that feature_columns is incomplete.")
-        else:
-            pass
-            #nonzero_cols = X_aligned.columns[nonzero_ix].tolist()
-            #sample_preview = {col: float(X_aligned.loc[0, col]) for col in nonzero_cols[:50]}
-            #st.write("DEBUG — Non-zero aligned features (sample):", sample_preview)
-
+        except IndexError:
+            # If scaler.mean_ is too short (shouldn't happen if alignment is correct), raise an error.
+            st.warning("Scaler mean array is shorter than expected. Cannot apply 'completed' fix.")
+            
         # --- 8. Sanity-check feature count matches model input dim ---
         if X_aligned.shape[1] != len(feature_columns):
             raise ValueError(f"Feature count mismatch: Expected {len(feature_columns)}, got {X_aligned.shape[1]}")
 
         # --- 9. Scale ---
-        try:
-            X_scaled = scaler.transform(X_aligned.values.astype(np.float32))
+        X_scaled = scaler.transform(X_aligned.values.astype(np.float32))
             st.write("DEBUG — Full Scaled Input Vector (Check for extreme values):", X_scaled[0, :])
         except Exception as e:
             raise
