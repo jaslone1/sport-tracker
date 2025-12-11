@@ -105,34 +105,40 @@ def predict_winner(raw_game_data: dict) -> dict:
         # Identify columns for label encoding vs one-hot vs numeric
         le_cols = list(label_encoders.keys()) if isinstance(label_encoders, dict) else []
 
-        # Determine one-hot prefixes present in training by inspecting feature_columns
-        ohe_prefixes = set()
-        for col in feature_columns:
-            if "_" in col:
-                prefix = col.split("_")[0]
-                ohe_prefixes.add(prefix)
+        # --- Training used ONE-HOT for these base categorical columns ---
+    OHE_BASE_COLS = [
+        "homeClassification",
+        "awayClassification",
+        "seasonType"
+    ]
 
-        # OHE candidate columns are those in incoming df that match a prefix
-        ohe_cols = [c for c in df.columns if c in ohe_prefixes]
+    # Determine which OHE columns are actually present in the input
+    ohe_cols = [c for c in OHE_BASE_COLS if c in df.columns]
 
-        # Numeric columns = everything else (not label-encoded, not OHE)
-        numeric_cols = [c for c in df.columns if c not in le_cols and c not in ohe_cols]
+    # Numeric columns = everything else that is NOT label-encoded and NOT in OHE_BASE_COLS
+    numeric_cols = [c for c in df.columns if c not in le_cols and c not in ohe_cols]
 
-        # --- 3. Label Encoding (high-cardinality columns) ---
-        df_le = df.copy()
-        for col in le_cols:
-            if col in df_le.columns:
-                series = df_le[col].astype(str)
-                mapping = label_encoders.get(col, {})
-                # Map known values, unknowns -> -1
-                df_le[col] = series.map(mapping).fillna(-1).astype(float)
+    # --- 4. One-Hot Encoding using the training prefixes ---
+    df_ohe = pd.DataFrame(index=df.index)
+    for col in ohe_cols:
+        # Training used prefix="<col>"
+        temp = pd.get_dummies(df[col].fillna(""), prefix=col)
 
-        # --- 4. One-Hot Encoding using same PREFIX as training ---
-        df_ohe = pd.DataFrame(index=df.index)
-        for col in ohe_cols:
-            # use the SAME prefix as training (prefix=col)
-            temp = pd.get_dummies(df[col].fillna(""), prefix=col)
-            df_ohe = pd.concat([df_ohe, temp], axis=1)
+        # Ensure we only keep categories that existed during training
+        # The model expects columns that exist in feature_columns.json
+        allowed_cols = [c for c in temp.columns if c in feature_columns]
+
+        # Missing training-era categories must still exist in correct format → add them as zeros
+        missing_cols = [c for c in feature_columns if c.startswith(col + "_") and c not in allowed_cols]
+
+        # Add zero columns for missing categories
+        for m in missing_cols:
+            temp[m] = 0
+
+        # Keep only training categories
+        temp = temp[[c for c in temp.columns if c in feature_columns]]
+
+        df_ohe = pd.concat([df_ohe, temp], axis=1)
 
         # --- 5. Numeric columns (training used pd.to_numeric + fillna median) ---
         # We'll coerce numeric columns; fill NaNs with 0 for inference (training filled with medians)
