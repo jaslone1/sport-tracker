@@ -91,7 +91,8 @@ def predict_winner(raw_game_data: dict) -> dict:
             # coerce errors to NaT, then convert to int64 epoch (ns); if NaT remains, will be NaT -> handle below
             df["startDate"] = pd.to_datetime(df["startDate"], errors="coerce")
             if df["startDate"].isna().any():
-                st.warning("startDate could not be parsed for one or more records; converted to NaT and then to numeric 0.")
+                # st.warning("startDate could not be parsed for one or more records; converted to NaT and then to numeric 0.")
+                pass
             # convert to int64. If NaT, .view will produce a large negative; coerce that to 0 to be safe.
             try:
                 df["startDate"] = df["startDate"].view("int64")
@@ -150,10 +151,7 @@ def predict_winner(raw_game_data: dict) -> dict:
             allowed_cols = [c for c in temp.columns if c in feature_columns]
 
             # Missing training-era categories must still exist in correct format → add them as zeros
-            missing_cols = [c for c in feature_columns if c.startswith(col + "_") and c not in allowed_cols]
-
-            # Add zero columns for missing categories
-            for m in missing_cols:
+            for m in [c for c in feature_columns if c.startswith(col + "_") and c not in allowed_cols]:
                 temp[m] = 0
 
             # Keep only training categories
@@ -177,29 +175,9 @@ def predict_winner(raw_game_data: dict) -> dict:
         df_le_subset = df_le[[c for c in le_cols if c in df_le.columns]] if le_cols else pd.DataFrame(index=df.index)
         X_df_new = pd.concat([df_num, df_ohe, df_le_subset], axis=1).fillna(0)
 
-        # --- DEBUG: show produced columns before alignment ---
-        # st.write("DEBUG — Produced (pre-alignment) columns:", X_df_new.columns.tolist())
-
         # --- 7. Align to training feature columns ---
         # Use reindex for robust alignment, filling missing columns with 0 and dropping extra columns
         X_aligned = X_df_new.reindex(columns=feature_columns, fill_value=0.0)
-
-        # --- DEBUG: report missing/extra columns relative to training features ---
-        produced_set = set(X_df_new.columns.tolist())
-        expected_set = set(feature_columns)
-        missing_expected = sorted(list(expected_set - produced_set))
-        extra_produced = sorted(list(produced_set - expected_set))
-
-        if missing_expected:
-            pass
-            # st.warning(f"DEBUG — Expected feature columns missing from produced columns (they will be zeroed by reindex): {missing_expected[:50]}{'...' if len(missing_expected)>50 else ''}")
-        else:
-            pass
-            # st.write("DEBUG — No expected feature columns are missing from the produced columns.")
-
-        if extra_produced:
-            pass
-            # st.info(f"DEBUG — Produced columns not expected by model (these are ignored by reindex): {extra_produced[:50]}{'...' if len(extra_produced)>50 else ''}")
 
         # --- DEBUG: check if X_aligned is essentially all zeros ---
         aligned_values = X_aligned.iloc[0].values.astype(float)
@@ -208,7 +186,6 @@ def predict_winner(raw_game_data: dict) -> dict:
             pass
             # st.error("DEBUG — ALIGNED FEATURE VECTOR IS ALL ZEROS. This is usually a sign that one-hot/label-encoding naming does not match training or that feature_columns is incomplete.")
         else:
-            # show a sparse sample of non-zero features for inspection
             pass
             # nonzero_cols = X_aligned.columns[nonzero_ix].tolist()
             # sample_preview = {col: float(X_aligned.loc[0, col]) for col in nonzero_cols[:50]}
@@ -216,15 +193,12 @@ def predict_winner(raw_game_data: dict) -> dict:
 
         # --- 8. Sanity-check feature count matches model input dim ---
         if X_aligned.shape[1] != len(feature_columns):
-            # This should never happen with reindex, but good for a final check
-            # st.error(f"DEBUG — Feature column count mismatch after alignment: Expected {len(feature_columns)} columns, but aligned has {X_aligned.shape[1]}.")
             raise ValueError(f"Feature count mismatch: Expected {len(feature_columns)}, got {X_aligned.shape[1]}")
 
         # --- 9. Scale ---
         try:
             X_scaled = scaler.transform(X_aligned.values.astype(np.float32))
         except Exception as e:
-            # st.error(f"Error during scaling input features: {e}")
             raise
 
         # --- 10. Predict with PyTorch model ---
@@ -232,10 +206,6 @@ def predict_winner(raw_game_data: dict) -> dict:
             x_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(DEVICE)
             logits = model(x_tensor).cpu().numpy().ravel()[0]
             prob = 1.0 / (1.0 + np.exp(-logits))
-
-        # --- DEBUG: print raw model outputs ---
-        # st.write(f"DEBUG — raw logit: {logits}")
-        # st.write(f"DEBUG — home win probability (sigmoid): {prob:.12f}")
 
         # final interpretation
         prediction_text = "Home Team Wins" if prob >= 0.5 else "Away Team Wins"
@@ -313,7 +283,7 @@ def main():
         st.stop()
 
     st.subheader("Loaded Games Data (Filtered for Future Games)")
-    st.dataframe(future_games_df.head())
+    st.dataframe(future_games_df.head()) # Display the filtered future games
 
     # --- FILTER AND PREDICT FOR UNCOMPLETED GAMES ---
     st.header("Predictions for Upcoming (Uncompleted) Games")
@@ -327,23 +297,23 @@ def main():
 
         for i, (index, row) in enumerate(future_games_df.iterrows()):
             # Convert row to dictionary for predict_winner function
-            # Ensure all required keys are present and correctly named
+            # Ensure all required keys are present and correctly named, with sensible defaults
             raw_game_data = {
                 "season": row['season'],
                 "week": row['week'],
                 "completed": False, # Set to False for future games
-                "neutralSite": row['neutralSite'],
-                "conferenceGame": row['conferenceGame'],
-                "attendance": row['attendance'],
-                "venueId": str(row['venueId']), # Ensure IDs are strings if label encoded
-                "homeId": str(row['homeId']),
+                "neutralSite": row.get('neutralSite', False), # Default to False if missing
+                "conferenceGame": row.get('conferenceGame', False), # Default to False if missing
+                "attendance": row.get('attendance', 0), # Default to 0 if missing
+                "venueId": str(row.get('venueId', '0')), # Default to '0' if missing
+                "homeId": str(row.get('homeId', '0')), # Default to '0' if missing
                 "home_points": 0, # Set to 0 for pre-game prediction
-                "homePregameElo": row['homePregameElo'],
-                "awayId": str(row['awayId']),
+                "homePregameElo": row.get('homePregameElo', 1500), # Default to 1500 (average Elo) if missing
+                "awayId": str(row.get('awayId', '0')), # Default to '0' if missing
                 "away_points": 0, # Set to 0 for pre-game prediction
-                "awayPregameElo": row['awayPregameElo'],
-                "excitementIndex": row['excitementIndex'],
-                "startDate": row['startDate'],
+                "awayPregameElo": row.get('awayPregameElo', 1500), # Default to 1500 (average Elo) if missing
+                "excitementIndex": row.get('excitementIndex', 0.0), # Default to 0.0 if missing
+                "startDate": row.get('startDate', datetime.now(timezone.utc).isoformat()), # Default to current UTC time if missing
                 "homeConference": row.get('homeConference', None),
                 "awayConference": row.get('awayConference', None),
                 "homeClassification": row.get('homeClassification', None),
