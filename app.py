@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 from datetime import datetime, timezone # Import datetime
+from sklearn.preprocessing import LabelEncoder # Import LabelEncoder to check type
 
 # --- 1. CONFIGURATION ---
 OUT_DIR = Path("ml_model/pytorch_training_winner")
@@ -110,9 +111,17 @@ def predict_winner(raw_game_data: dict) -> dict:
         for col in le_cols:
             if col in df.columns:
                 encoder = label_encoders[col]
-                # Map values. For unseen categories, use 0 or a consistent placeholder.
-                # A common strategy is to check if the value is in the encoder's classes.
-                df_le[col] = df[col].apply(lambda x: encoder.transform([x])[0] if x in encoder.classes_ else 0)
+                # Check if it's a LabelEncoder object (preferred) or a dictionary mapping
+                if isinstance(encoder, LabelEncoder):
+                    # It's a LabelEncoder
+                    df_le[col] = df[col].apply(lambda x: encoder.transform([x])[0] if x in encoder.classes_ else 0)
+                elif isinstance(encoder, dict):
+                    # It's a dictionary, assume it's a direct mapping (e.g., if LabelEncoder was saved as a dict representation)
+                    df_le[col] = df[col].apply(lambda x: encoder.get(x, 0)) # Use .get with default 0 for unseen categories
+                else:
+                    # Fallback for unexpected encoder type
+                    st.warning(f"Unexpected encoder type for column '{col}'. Expected LabelEncoder or dict, got {type(encoder)}. Assigning 0.")
+                    df_le[col] = 0
             else:
                 # If the column is completely missing from the input, fill with 0
                 df_le[col] = 0
