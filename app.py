@@ -184,7 +184,7 @@ def predict_winner(raw_game_data: dict) -> dict:
         nonzero_ix = np.where(~np.isclose(aligned_values, 0.0))[0]
         if len(nonzero_ix) == 0:
             pass
-            # st.error("DEBUG — ALIGNED FEATURE VECTOR IS ALL ZEROS. This is usually a sign that one-hot/label-encoding naming does not match training or that feature_columns is incomplete.")
+            st.error("DEBUG — ALIGNED FEATURE VECTOR IS ALL ZEROS. This is usually a sign that one-hot/label-encoding naming does not match training or that feature_columns is incomplete.")
         else:
             pass
             # nonzero_cols = X_aligned.columns[nonzero_ix].tolist()
