@@ -71,82 +71,92 @@ except RuntimeError as e:
     print(f"Failed to load model artifacts: {e}")
     scaler, label_encoders, feature_columns, model, INPUT_DIM = None, None, None, None, None
 
-# --- 4. PREDICTION FUNCTION (The core inference logic) ---
 def predict_winner(raw_game_data: dict) -> dict:
     """
-    Processes raw game data using saved artifacts and makes a prediction.
-
+    Processes raw game data using the SAME preprocessing steps used in training.
+    This ensures correct feature alignment and correct predictions.
     """
-    # Ensure artifacts are loaded before attempting prediction
-    if scaler is None or label_encoders is None or feature_columns is None or model is None or INPUT_DIM is None:
+
+    # --- SAFETY: Ensure model artifacts loaded ---
+    if scaler is None or label_encoders is None or feature_columns is None or model is None:
         raise RuntimeError("Model artifacts are not loaded. Cannot make predictions.")
 
-    # 1. Convert raw input dict to a one-row DataFrame
-    raw_df = pd.DataFrame([raw_game_data])
-    df_features_new = raw_df.copy()
+    # --- 1. Convert incoming data to DataFrame ---
+    df = pd.DataFrame([raw_game_data]).copy()
 
-    # 2. Handle boolean columns
-    for c in df_features_new.columns:
-        if df_features_new[c].dtype == "bool":
-            df_features_new[c] = df_features_new[c].astype(int)
+    # --- 2. Match training preprocessing ---
 
-    # 3. Label Encoding (for high-cardinality columns like IDs)
-    df_le = df_features_new.copy()
-    for col, mapping in label_encoders.items():
+    # Convert booleans → ints
+    for col in df.columns:
+        if df[col].dtype == "bool":
+            df[col] = df[col].astype(int)
+
+    # Convert startDate to numeric (training treated ALL numeric via pd.to_numeric)
+    if "startDate" in df.columns:
+        df["startDate"] = pd.to_datetime(df["startDate"], errors="coerce")
+        df["startDate"] = df["startDate"].view("int64")  # EXACT match to training numeric conversion
+
+    # Identify columns for label encoding vs one-hot vs numeric
+    # Based on training:
+    # - label_encoders keys = label-encoded columns
+    # - feature_columns with prefix_* = one-hot columns
+    # - everything else numeric
+    le_cols = list(label_encoders.keys())
+
+    # Determine one-hot columns by checking prefixes in feature_columns
+    # e.g. "homeConference_ACC" → prefix "homeConference"
+    ohe_prefixes = set()
+    for col in feature_columns:
+        if "_" in col:
+            prefix = col.split("_")[0]
+            ohe_prefixes.add(prefix)
+
+    # Some prefixes in training had format like "homeConference_*"
+    # Identify original OHE columns by looking at raw features
+    ohe_cols = [c for c in df.columns if c in ohe_prefixes]
+
+    # Numeric columns = everything else
+    numeric_cols = [c for c in df.columns if c not in le_cols and c not in ohe_cols]
+
+    # --- 3. Label Encoding (high-cardinality columns) ---
+    df_le = df.copy()
+    for col in le_cols:
         if col in df_le.columns:
-            series = df_le[col].fillna("").astype(str)
-            # Map known values, fill unknown/unseen values with -1 or a defined default.
-            df_le[col] = series.map(mapping).fillna(-1).astype(float)
+            series = df_le[col].astype(str)
+            df_le[col] = series.map(label_encoders[col]).fillna(-1)
 
-    # 4. One-Hot Encoding (for low-cardinality columns)
-    # Get dummies for all string/object columns that weren't label-encoded
+    # --- 4. One-Hot Encoding using same PREFIX as training ---
+    df_ohe = pd.DataFrame(index=df.index)
+    for col in ohe_cols:
+        temp = pd.get_dummies(df[col].fillna(""), prefix=col)
+        df_ohe = pd.concat([df_ohe, temp], axis=1)
 
-    # Determine which columns to one-hot encode based on saved features
-    ohe_cols_in_input = [col for col in df_features_new.columns if df_features_new[col].dtype == 'object' and col not in label_encoders]
+    # --- 5. Numeric columns (training used pd.to_numeric + fillna median) ---
+    df_num = df[numeric_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
 
-    # Use training features list to create OHE columns
-    # We must know the exact columns used in training (feature_columns) to align the data.
-    # The safest way is to let get_dummies run on the input and then align.
+    # --- 6. Combine everything EXACTLY like training ---
+    X_df_new = pd.concat([df_num, df_ohe, df_le[le_cols]], axis=1)
 
-    # Filter df_le to only include columns that are NOT object/string (already label encoded or numeric)
-    # Then append one-hot encoded columns
+    # --- 7. Align to training feature columns ---
+    X_aligned = pd.DataFrame(0.0, index=[0], columns=feature_columns)
 
-    # Separate numeric/LE columns from those that need OHE
-    numeric_le_cols = [c for c in df_le.columns if c not in ohe_cols_in_input]
-    df_ohe = pd.get_dummies(df_features_new[ohe_cols_in_input].fillna(""), dummy_na=False)
-
-    # 5. Combine and Align (CRITICAL STEP)
-    # Concatenate the processed parts
-    X_df_new = pd.concat([df_le[numeric_le_cols].fillna(0), df_ohe], axis=1)
-
-    # Align the new data to the feature column order from training
-    X_df_aligned = pd.DataFrame(0.0, index=X_df_new.index, columns=feature_columns)
-
-    # Fill the aligned frame with values from the new data
     for col in X_df_new.columns:
-        if col in X_df_aligned.columns:
-             X_df_aligned[col] = X_df_new[col].values[0] # Transfer the single value
+        if col in X_aligned.columns:
+            X_aligned[col] = X_df_new[col].values[0]
 
-    if X_df_aligned.shape[1] != INPUT_DIM:
-         raise ValueError(f"Feature count mismatch: Expected {INPUT_DIM}, got {X_df_aligned.shape[1]}")
+    # --- 8. Scale ---
+    X_scaled = scaler.transform(X_aligned.values.astype(np.float32))
 
-    # 6. Scale and Predict
-    X_new = X_df_aligned.values.astype(np.float32)
-    X_scaled = scaler.transform(X_new)
-
+    # --- 9. Predict with PyTorch model ---
     with torch.no_grad():
-        X_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(DEVICE)
-        logits = model(X_tensor).cpu().numpy().ravel()[0]
+        x_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(DEVICE)
+        logits = model(x_tensor).cpu().numpy().ravel()[0]
+        prob = 1 / (1 + np.exp(-logits))
 
-        # Convert logit to probability (Sigmoid)
-        probability = 1.0 / (1.0 + np.exp(-logits))
-
-    # 7. Interpret Output
-    prediction = int(probability >= 0.5)
-
+    # --- 10. Return prediction ---
     return {
-        "home_team_win_prob": float(probability),
-        "prediction": "Home Team Wins" if prediction == 1 else "Away Team Wins",
+        "home_team_win_prob": float(prob),
+        "prediction": "Home Team Wins" if prob >= 0.5 else "Away Team Wins",
     }
 
 # --- 5. STREAMLIT UI ---
