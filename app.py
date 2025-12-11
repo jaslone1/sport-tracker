@@ -310,11 +310,11 @@ def main():
                 "neutralSite": row.get('neutralSite', False), # Default to False if missing
                 "conferenceGame": row.get('conferenceGame', False), # Default to False if missing
                 "attendance": row.get('attendance', 0), # Default to 0 if missing
-                "venueId": str(row.get('venueId', '0')), # Default to '0' if missing
-                "homeId": str(row.get('homeId', '0')), # Default to '0' if missing
+                "venueId": row.get('venueId', '0'), # Default to '0' if missing
+                "homeId": row.get('homeId', '0'), # Default to '0' if missing
                 "home_points": 0, # Set to 0 for pre-game prediction
                 "homePregameElo": row.get('homePregameElo', 1500), # Default to 1500 (average Elo) if missing
-                "awayId": str(row.get('awayId', '0')), # Default to '0' if missing
+                "awayId": row.get('awayId', '0'), # Default to '0' if missing
                 "away_points": 0, # Set to 0 for pre-game prediction
                 "awayPregameElo": row.get('awayPregameElo', 1500), # Default to 1500 (average Elo) if missing
                 "excitementIndex": row.get('excitementIndex', 0.0), # Default to 0.0 if missing
