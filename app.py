@@ -187,9 +187,9 @@ def predict_winner(raw_game_data: dict) -> dict:
             st.error("DEBUG — ALIGNED FEATURE VECTOR IS ALL ZEROS. This is usually a sign that one-hot/label-encoding naming does not match training or that feature_columns is incomplete.")
         else:
             pass
-            # nonzero_cols = X_aligned.columns[nonzero_ix].tolist()
-            # sample_preview = {col: float(X_aligned.loc[0, col]) for col in nonzero_cols[:50]}
-            # st.write("DEBUG — Non-zero aligned features (sample):", sample_preview)
+            nonzero_cols = X_aligned.columns[nonzero_ix].tolist()
+            sample_preview = {col: float(X_aligned.loc[0, col]) for col in nonzero_cols[:50]}
+            st.write("DEBUG — Non-zero aligned features (sample):", sample_preview)
 
         # --- 8. Sanity-check feature count matches model input dim ---
         if X_aligned.shape[1] != len(feature_columns):
