@@ -105,40 +105,52 @@ def predict_winner(raw_game_data: dict) -> dict:
         # Identify columns for label encoding vs one-hot vs numeric
         le_cols = list(label_encoders.keys()) if isinstance(label_encoders, dict) else []
 
+        # --- 3. Label Encoding ---
+        df_le = pd.DataFrame(index=df.index)
+        for col in le_cols:
+            if col in df.columns:
+                encoder = label_encoders[col]
+                # Map values. For unseen categories, use 0 or a consistent placeholder.
+                # A common strategy is to check if the value is in the encoder's classes.
+                df_le[col] = df[col].apply(lambda x: encoder.transform([x])[0] if x in encoder.classes_ else 0)
+            else:
+                # If the column is completely missing from the input, fill with 0
+                df_le[col] = 0
+
         # --- Training used ONE-HOT for these base categorical columns ---
-    OHE_BASE_COLS = [
-        "homeClassification",
-        "awayClassification",
-        "seasonType"
-    ]
+        OHE_BASE_COLS = [
+            "homeClassification",
+            "awayClassification",
+            "seasonType"
+        ]
 
-    # Determine which OHE columns are actually present in the input
-    ohe_cols = [c for c in OHE_BASE_COLS if c in df.columns]
+        # Determine which OHE columns are actually present in the input
+        ohe_cols = [c for c in OHE_BASE_COLS if c in df.columns]
 
-    # Numeric columns = everything else that is NOT label-encoded and NOT in OHE_BASE_COLS
-    numeric_cols = [c for c in df.columns if c not in le_cols and c not in ohe_cols]
+        # Numeric columns = everything else that is NOT label-encoded and NOT in OHE_BASE_COLS
+        numeric_cols = [c for c in df.columns if c not in le_cols and c not in ohe_cols]
 
-    # --- 4. One-Hot Encoding using the training prefixes ---
-    df_ohe = pd.DataFrame(index=df.index)
-    for col in ohe_cols:
-        # Training used prefix="<col>"
-        temp = pd.get_dummies(df[col].fillna(""), prefix=col)
+        # --- 4. One-Hot Encoding using the training prefixes ---
+        df_ohe = pd.DataFrame(index=df.index)
+        for col in ohe_cols:
+            # Training used prefix="<col>"
+            temp = pd.get_dummies(df[col].fillna(""), prefix=col)
 
-        # Ensure we only keep categories that existed during training
-        # The model expects columns that exist in feature_columns.json
-        allowed_cols = [c for c in temp.columns if c in feature_columns]
+            # Ensure we only keep categories that existed during training
+            # The model expects columns that exist in feature_columns.json
+            allowed_cols = [c for c in temp.columns if c in feature_columns]
 
-        # Missing training-era categories must still exist in correct format → add them as zeros
-        missing_cols = [c for c in feature_columns if c.startswith(col + "_") and c not in allowed_cols]
+            # Missing training-era categories must still exist in correct format → add them as zeros
+            missing_cols = [c for c in feature_columns if c.startswith(col + "_") and c not in allowed_cols]
 
-        # Add zero columns for missing categories
-        for m in missing_cols:
-            temp[m] = 0
+            # Add zero columns for missing categories
+            for m in missing_cols:
+                temp[m] = 0
 
-        # Keep only training categories
-        temp = temp[[c for c in temp.columns if c in feature_columns]]
+            # Keep only training categories
+            temp = temp[[c for c in temp.columns if c in feature_columns]]
 
-        df_ohe = pd.concat([df_ohe, temp], axis=1)
+            df_ohe = pd.concat([df_ohe, temp], axis=1)
 
         # --- 5. Numeric columns (training used pd.to_numeric + fillna median) ---
         # We'll coerce numeric columns; fill NaNs with 0 for inference (training filled with medians)
@@ -282,10 +294,10 @@ def main():
         games_df = pd.read_csv(csv_path)
         # Convert 'startDate' to datetime objects and filter for future games
         games_df['startDate'] = pd.to_datetime(games_df['startDate'])
-        
+
         # Get the current time as a timezone-aware object (UTC)
-        now_utc = datetime.now(timezone.utc) 
-    
+        now_utc = datetime.now(timezone.utc)
+
         # Now the comparison is between two timezone-aware objects (datetime64[ns, UTC] vs. datetime[UTC])
         future_games_df = games_df[games_df['startDate'] > now_utc].copy()
 
