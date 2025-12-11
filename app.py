@@ -197,7 +197,8 @@ def predict_winner(raw_game_data: dict) -> dict:
 
         # --- 9. Scale ---
         try:
-            X_scaled = scaler.transform(X_aligned.values.astype(np.float32))
+            #X_scaled = scaler.transform(X_aligned.values.astype(np.float32))
+            X_scaled_debug = X_aligned.values.astype(np.float32)
         except Exception as e:
             raise
 
