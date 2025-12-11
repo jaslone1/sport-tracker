@@ -204,7 +204,7 @@ def predict_winner(raw_game_data: dict) -> dict:
 
         # --- 10. Predict with PyTorch model ---
         with torch.no_grad():
-            x_tensor = torch.tensor(X_scaled, dtype=torch.float32).to(DEVICE)
+            x_tensor = torch.tensor(X_scaled_debug, dtype=torch.float32).to(DEVICE)
             logits = model(x_tensor).cpu().numpy().ravel()[0]
             prob = 1.0 / (1.0 + np.exp(-logits))
 
