@@ -181,15 +181,8 @@ def predict_winner(raw_game_data: dict) -> dict:
         st.write("DEBUG — Produced (pre-alignment) columns:", X_df_new.columns.tolist())
 
         # --- 7. Align to training feature columns ---
-        X_aligned = pd.DataFrame(0.0, index=[0], columns=feature_columns)
-
-        for col in X_df_new.columns:
-            if col in X_aligned.columns:
-                try:
-                    X_aligned[col] = X_df_new[col].values[0]
-                except Exception as ex:
-                    st.error(f"Error assigning column '{col}' into aligned frame: {ex}")
-                    X_aligned[col] = 0.0
+        # Use reindex for robust alignment, filling missing columns with 0 and dropping extra columns
+        X_aligned = X_df_new.reindex(columns=feature_columns, fill_value=0.0)
 
         # --- DEBUG: report missing/extra columns relative to training features ---
         produced_set = set(X_df_new.columns.tolist())
@@ -198,18 +191,18 @@ def predict_winner(raw_game_data: dict) -> dict:
         extra_produced = sorted(list(produced_set - expected_set))
 
         if missing_expected:
-            st.warning(f"DEBUG — Expected feature columns missing from produced columns (they will be zeroed): {missing_expected[:50]}{'...' if len(missing_expected)>50 else ''}")
+            st.warning(f"DEBUG — Expected feature columns missing from produced columns (they will be zeroed by reindex): {missing_expected[:50]}{'...' if len(missing_expected)>50 else ''}")
         else:
             st.write("DEBUG — No expected feature columns are missing from the produced columns.")
 
         if extra_produced:
-            st.info(f"DEBUG — Produced columns not expected by model (these are ignored): {extra_produced[:50]}{'...' if len(extra_produced)>50 else ''}")
+            st.info(f"DEBUG — Produced columns not expected by model (these are ignored by reindex): {extra_produced[:50]}{'...' if len(extra_produced)>50 else ''}")
 
         # --- DEBUG: check if X_aligned is essentially all zeros ---
         aligned_values = X_aligned.iloc[0].values.astype(float)
         nonzero_ix = np.where(~np.isclose(aligned_values, 0.0))[0]
         if len(nonzero_ix) == 0:
-            st.error("DEBUG — ALIGNED FEATURE VECTOR IS ALL ZEROS. This is usually a sign that one-hot/label-encoding naming does not match training. The model will produce a constant output.")
+            st.error("DEBUG — ALIGNED FEATURE VECTOR IS ALL ZEROS. This is usually a sign that one-hot/label-encoding naming does not match training or that feature_columns is incomplete.")
         else:
             # show a sparse sample of non-zero features for inspection
             nonzero_cols = X_aligned.columns[nonzero_ix].tolist()
@@ -218,7 +211,7 @@ def predict_winner(raw_game_data: dict) -> dict:
 
         # --- 8. Sanity-check feature count matches model input dim ---
         if X_aligned.shape[1] != len(feature_columns):
-            # This should never happen because we built X_aligned with feature_columns, but double-check
+            # This should never happen with reindex, but good for a final check
             st.error(f"DEBUG — Feature column count mismatch after alignment: Expected {len(feature_columns)} columns, but aligned has {X_aligned.shape[1]}.")
             raise ValueError(f"Feature count mismatch: Expected {len(feature_columns)}, got {X_aligned.shape[1]}")
 
