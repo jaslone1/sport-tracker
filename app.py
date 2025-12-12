@@ -96,8 +96,8 @@ def load_all_artifacts():
             st.warning(f"Team mapping file not found at {team_mapping_path.resolve()}. Team names will not be displayed.")
             team_map = {}
         else:
-            team_df = pd.read_csv(team_mapping_path, dtype={'teamId': str}) 
-            team_map = pd.Series(team_df.teamName.values, index=team_df.teamId).to_dict()
+            team_df = pd.read_csv(team_mapping_path, dtype={'id': str}) 
+            team_map = pd.Series(team_df.school.values, index=team_df.id).to_dict()
 
         return scaler, label_encoders, feature_columns, model, INPUT_DIM, team_map
     
