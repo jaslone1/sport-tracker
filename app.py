@@ -10,14 +10,18 @@ from datetime import datetime, timezone
 from sklearn.preprocessing import LabelEncoder
 
 # --- 1. CONFIGURATION ---
-OUT_DIR = Path("ml_model/pytorch_training_winner")
+# Use the directory of the current script file as the base path
+BASE_DIR = Path(__file__).resolve().parent 
+
+# Build the artifact output directory path relative to the script's location
+OUT_DIR = BASE_DIR / "ml_model" / "pytorch_training_winner"
 
 MODEL_PATH = OUT_DIR / "winner_model.pth"
 SCALER_PATH = OUT_DIR / "scaler.joblib"
 FEATURE_COLUMNS_PATH = OUT_DIR / "feature_columns.json"
 LABEL_ENCODERS_PATH = OUT_DIR / "label_encoders.joblib"
 
-DEVICE = torch.device("cpu")  # Use CPU for deployment
+DEVICE = torch.device("cpu")
 
 # --- 2. MODEL DEFINITION (Must match the architecture used in training) --
 class MLP(nn.Module):
