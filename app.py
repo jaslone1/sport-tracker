@@ -53,7 +53,16 @@ def load_all_artifacts():
         model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
         model.eval()
 
-        return scaler, label_encoders, feature_columns, model, INPUT_DIM
+        # Load Team Mapping
+        team_mapping_path = Path("data/team_mapping.csv")
+        if not team_mapping_path.exists():
+            st.error(f"Team mapping file not found at {team_mapping_path}. Cannot display team names.")
+            team_map = {}
+        else:
+            team_df = pd.read_csv(team_mapping_path, dtype={'teamId': str}) # Read ID as string to match input
+            team_map = pd.Series(team_df.teamName.values, index=team_df.teamId).to_dict()
+
+        return scaler, label_encoders, feature_columns, model, INPUT_DIM, team_map
     except FileNotFoundError as e:
         raise RuntimeError(f"One or more artifact files not found in {OUT_DIR}. Expected files: winner_model.pth, scaler.joblib, feature_columns.json, label_encoders.joblib. Error: {e}") from e
     except Exception as e:
