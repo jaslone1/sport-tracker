@@ -37,36 +37,72 @@ class MLP(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+# Helper function to check path existence and provide detailed error
+def check_path_and_load(path: Path, artifact_name: str, load_func=None):
+    """Checks if a path exists and attempts to load the artifact."""
+    if not path.exists():
+        error_msg = f"❌ Missing file: The required artifact '{artifact_name}' was not found at the expected absolute location: {path.resolve()}"
+        st.error(error_msg)
+        print(f"DEBUG ERROR: {error_msg}")
+        raise FileNotFoundError(error_msg)
+
+    # If load_func is provided, attempt to execute it
+    if load_func:
+        try:
+            return load_func(path)
+        except Exception as e:
+            error_msg = f"❌ Load Failed: Could not load '{artifact_name}' from {path.name}. Possible corruption or wrong format. Error: {e}"
+            st.error(error_msg)
+            print(f"DEBUG ERROR: {error_msg}")
+            # Re-raise as a RuntimeError to stop execution
+            raise RuntimeError(error_msg) from e
+    
+    # If no load function is provided, just return a confirmation
+    return True
+
 # --- 3. ARTIFACT LOADING (Runs ONCE, Cached by Streamlit) ---
 @st.cache_resource
 def load_all_artifacts():
+    st.info(f"Checking for artifacts in absolute path: {OUT_DIR.resolve()}")
+    
     try:
-        # Load feature columns, scaler, label encoders
+        # Load feature columns (Using a lambda for simpler inline file opening)
+        check_path_and_load(FEATURE_COLUMNS_PATH, "feature_columns.json")
         with open(FEATURE_COLUMNS_PATH, "r") as f:
             feature_columns = json.load(f)
-        scaler = joblib.load(SCALER_PATH)
-        label_encoders = joblib.load(LABEL_ENCODERS_PATH)
+            
+        # Load scaler
+        scaler = check_path_and_load(SCALER_PATH, "scaler.joblib", load_func=joblib.load)
+        
+        # Load label encoders
+        label_encoders = check_path_and_load(LABEL_ENCODERS_PATH, "label_encoders.joblib", load_func=joblib.load)
 
         # Initialize and load model
         INPUT_DIM = len(feature_columns)
         model = MLP(input_dim=INPUT_DIM).to(DEVICE)
+        
+        # Load model state dict
+        check_path_and_load(MODEL_PATH, "winner_model.pth")
         model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
         model.eval()
 
         # Load Team Mapping
         team_mapping_path = Path("data/team_mapping.csv")
         if not team_mapping_path.exists():
-            st.error(f"Team mapping file not found at {team_mapping_path}. Cannot display team names.")
+            st.warning(f"Team mapping file not found at {team_mapping_path.resolve()}. Team names will not be displayed.")
             team_map = {}
         else:
-            team_df = pd.read_csv(team_mapping_path, dtype={'teamId': str}) # Read ID as string to match input
+            team_df = pd.read_csv(team_mapping_path, dtype={'teamId': str}) 
             team_map = pd.Series(team_df.teamName.values, index=team_df.teamId).to_dict()
 
         return scaler, label_encoders, feature_columns, model, INPUT_DIM, team_map
+    
     except FileNotFoundError as e:
-        raise RuntimeError(f"One or more artifact files not found in {OUT_DIR}. Expected files: winner_model.pth, scaler.joblib, feature_columns.json, label_encoders.joblib. Error: {e}") from e
+        # Catch the specific error from the helper function
+        raise RuntimeError(f"Critical artifact loading failed. See Streamlit error message for details.") from e
     except Exception as e:
-        raise RuntimeError(f"Error loading model artifacts from {OUT_DIR}. Please ensure all model files exist and are valid. Error: {e}") from e
+        # Catch generic errors from the surrounding logic
+        raise RuntimeError(f"General error during artifact initialization: {e}") from e
 
 # Load everything globally
 try:
