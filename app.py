@@ -367,7 +367,7 @@ def main():
             predictions_df['Away Team'] = predictions_df['awayId_str'].map(team_map).fillna(predictions_df['awayId_str'])
             # Select and reorder columns for display
             display_cols = [
-                'homeId', 'awayId', 'homePregameElo', 'awayPregameElo',
+                'Home Team', 'Away Team', 'homePregameElo', 'awayPregameElo',
                 'home_team_win_prob', 'prediction', 'season', 'week', 'startDate'
             ]
             # Only format if 'home_team_win_prob' is not None
