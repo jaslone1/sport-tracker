@@ -19,7 +19,7 @@ LABEL_ENCODERS_PATH = OUT_DIR / "label_encoders.joblib"
 
 DEVICE = torch.device("cpu")  # Use CPU for deployment
 
-# --- 2. MODEL DEFINITION (Must match the architecture used in training) ---
+# --- 2. MODEL DEFINITION (Must match the architecture used in training) --
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden=[128, 64], dropout=0.3):
         super().__init__()
