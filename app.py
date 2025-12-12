@@ -70,11 +70,11 @@ def load_all_artifacts():
 
 # Load everything globally
 try:
-    scaler, label_encoders, feature_columns, model, INPUT_DIM = load_all_artifacts()
+    scaler, label_encoders, feature_columns, model, INPUT_DIM, team_map = load_all_artifacts()
 except RuntimeError as e:
     # Print to console and keep variables None for the UI to handle
     print(f"Failed to load model artifacts: {e}")
-    scaler, label_encoders, feature_columns, model, INPUT_DIM = None, None, None, None, None
+    scaler, label_encoders, feature_columns, model, INPUT_DIM, team_map = None, None, None, None, None, None
 
 def predict_winner(raw_game_data: dict) -> dict:
     """
@@ -358,6 +358,13 @@ def main():
         # Display predictions
         if predictions:
             predictions_df = pd.DataFrame(predictions)
+            # Convert IDs to strings to ensure they match the keys in team_map
+            predictions_df['homeId_str'] = predictions_df['homeId'].astype(str)
+            predictions_df['awayId_str'] = predictions_df['awayId'].astype(str)
+        
+            # Map the IDs to names, using the ID as a fallback if the name is missing
+            predictions_df['Home Team'] = predictions_df['homeId_str'].map(team_map).fillna(predictions_df['homeId_str'])
+            predictions_df['Away Team'] = predictions_df['awayId_str'].map(team_map).fillna(predictions_df['awayId_str'])
             # Select and reorder columns for display
             display_cols = [
                 'homeId', 'awayId', 'homePregameElo', 'awayPregameElo',
