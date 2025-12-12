@@ -40,6 +40,11 @@ class MLP(nn.Module):
 # --- 3. ARTIFACT LOADING (Runs ONCE, Cached by Streamlit) ---
 @st.cache_resource
 def load_all_artifacts():
+    # Print the absolute path for OUT_DIR
+    st.info(f"Checking for artifacts in absolute path: {OUT_DIR.resolve()}")
+    
+    # Add a print statement for console debugging as well
+    print(f"DEBUG: Checking for artifacts in absolute path: {OUT_DIR.resolve()}")
     try:
         # Load feature columns, scaler, label encoders
         with open(FEATURE_COLUMNS_PATH, "r") as f:
