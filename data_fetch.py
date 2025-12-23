@@ -7,90 +7,80 @@ import time
 # -----------------------------
 # CONFIGURATION
 # -----------------------------
-CFB_API_KEY = "3yZC6fPALRy4yRPtRMjghq/Mmrpe+R7FvMDYWae+7NqbMON8tH40idSddmQ+Yc/N"  # Replace with your valid key
+CFB_API_KEY = "3yZC6fPALRy4yRPtRMjghq/Mmrpe+R7FvMDYWae+7NqbMON8tH40idSddmQ+Yc/N"
 CURRENT_YEAR = datetime.now().year
-START_YEAR = CURRENT_YEAR - 9  # last 10 seasons
-CFB_GAMES_URL = "https://api.collegefootballdata.com/games"
+START_YEAR = CURRENT_YEAR - 9 
+# Use the team stats endpoint for richer ML features
+CFB_STATS_URL = "https://api.collegefootballdata.com/games/teams"
 
+def flatten_stats(game_data):
+    """
+    Converts the nested API stats list into a flat dictionary 
+    with home_ and away_ prefixes.
+    """
+    row = {
+        "game_id": game_data.get("id"),
+        "year": game_data.get("season"),
+        "week": game_data.get("week"),
+        "season_type": game_data.get("season_type")
+    }
 
-# -----------------------------
-# Fetch FBS Games by Season
-# -----------------------------
-def fetch_fbs_games_for_seasons():
-    """
-    Fetches all FBS vs FBS games (regular + postseason)
-    from the last 10 seasons and saves them to data/games.csv.
-    """
-    all_games_data = []
+    for team_entry in game_data.get("teams", []):
+        prefix = "home_" if team_entry.get("homeAway") == "home" else "away_"
+        row[f"{prefix}team"] = team_entry.get("school")
+        row[f"{prefix}conference"] = team_entry.get("conference")
+        row[f"{prefix}points"] = team_entry.get("points")
+
+        # Flatten the stats list into individual columns
+        for s in team_entry.get("stats", []):
+            category = s.get("category")
+            stat_val = s.get("stat")
+            # Convert string stats (like '30:00' or '5-10') if necessary, 
+            # but usually, numeric categories are standard strings.
+            row[f"{prefix}{category}"] = stat_val
+
+    return row
+
+def fetch_fbs_stats():
+    all_game_rows = []
     headers = {"Authorization": f"Bearer {CFB_API_KEY}"}
 
-    print(f"🏈 Starting data fetch from {START_YEAR} to {CURRENT_YEAR}...")
+    print(f"🏈 Fetching box scores from {START_YEAR} to {CURRENT_YEAR}...")
 
     for year in range(START_YEAR, CURRENT_YEAR + 1):
-        # Regular season
-        params_reg = {"year": year, "seasonType": "regular"}
-        r_reg = requests.get(CFB_GAMES_URL, headers=headers, params=params_reg)
+        for season_type in ["regular", "postseason"]:
+            params = {"year": year, "seasonType": season_type}
+            response = requests.get(CFB_STATS_URL, headers=headers, params=params)
 
-        # Postseason
-        params_post = {"year": year, "seasonType": "postseason"}
-        r_post = requests.get(CFB_GAMES_URL, headers=headers, params=params_post)
+            if response.status_code != 200:
+                print(f"🚨 Error {year} {season_type}: {response.status_code}")
+                continue
 
-        # Handle bad responses
-        if r_reg.status_code != 200 or r_post.status_code != 200:
-            print(f"🚨 Error fetching {year}: {r_reg.status_code}/{r_post.status_code}")
-            print("Response sample:", r_reg.text[:300])
-            continue
+            games = response.json()
+            
+            # Filter for FBS vs FBS and flatten
+            for g in games:
+                # Check if both teams have a conference (standard way to identify FBS)
+                if all(t.get("conference") for t in g.get("teams", [])):
+                    all_game_rows.append(flatten_stats(g))
 
-        # Combine both sets of games
-        games = r_reg.json() + r_post.json()
-
-        if not games:
-            print(f"⚠️ No games returned for {year}.")
-            continue
-
-        print(f"   📦 Retrieved {len(games):,} total games for {year}")
-
-        # --- Filter to FBS vs FBS matchups ---
-        fbs_games = [
-            g for g in games
-            if g.get("homeConference") and g.get("awayConference")
-        ]
-
-        print(f"   ✅ {len(fbs_games):,} FBS games for {year}")
-        all_games_data.extend(fbs_games)
-
-        time.sleep(0.5)  # prevent rate limiting
+            print(f"   ✅ Processed {len(games)} games for {year} {season_type}")
+            time.sleep(0.5)
 
     # --- Save Results ---
-    if not all_games_data:
-        print("❌ No FBS games were retrieved. Please check API key or endpoint.")
+    if not all_game_rows:
+        print("❌ No data found.")
         return
 
+    df = pd.DataFrame(all_game_rows)
+    
+    # Calculate Winner (useful for ML Target)
+    df["home_win"] = df["home_points"].astype(float) > df["away_points"].astype(float)
+    
     os.makedirs("data", exist_ok=True)
-    df = pd.DataFrame(all_games_data)
-
-    # Normalize column names
-    if "homeTeam" in df.columns:
-        df = df.rename(columns={"homeTeam": "home_team", "awayTeam": "away_team"})
-
-    # Add winner column
-    df["winner"] = df.apply(
-        lambda row: row["home_team"]
-        if row.get("homePoints", 0) > row.get("awayPoints", 0)
-        else row["away_team"],
-        axis=1,
-    )
-
-    df["is_upset"] = False  # placeholder for later analysis
-
-    output_path = "data/games.csv"
+    output_path = "data/detailed_stats.csv"
     df.to_csv(output_path, index=False)
-    print(f"\n✅ Successfully saved {len(df):,} FBS vs FBS games to {output_path}")
+    print(f"\n🚀 Success! Saved {len(df)} games with detailed stats to {output_path}")
 
-
-# -----------------------------
-# MAIN
-# -----------------------------
 if __name__ == "__main__":
-    fetch_fbs_games_for_seasons()
-
+    fetch_fbs_stats()
