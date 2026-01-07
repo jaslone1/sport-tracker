@@ -1,6 +1,7 @@
 import streamlit as st
 import joblib
 import pandas as pd
+import numpy as np
 from pathlib import Path
 
 # --- PAGE CONFIG ---
@@ -21,8 +22,8 @@ def load_assets():
 model, lookup_df = load_assets()
 
 # --- UI ---
-st.title("🏈 CFB Matchup Predictor")
-st.markdown("Analyzing efficiency, explosive plays, and strength of schedule.")
+st.title("🏈 CFB Matchup Predictor & Simulator")
+st.markdown("Predicting winners and simulating scores based on advanced efficiency metrics.")
 
 teams = sorted(lookup_df['team'].unique())
 
@@ -34,8 +35,8 @@ with col2:
 
 is_neutral = st.checkbox("🏟️ Neutral Site Game")
 
-# --- PREDICTION & KEYS LOGIC ---
-if st.button("Analyze Matchup", use_container_width=True):
+# --- PREDICTION & SIMULATION LOGIC ---
+if st.button("Analyze & Simulate Matchup", use_container_width=True):
     h_stats = lookup_df[lookup_df['team'] == h_team].iloc[0]
     a_stats = lookup_df[lookup_df['team'] == a_team].iloc[0]
     
@@ -55,8 +56,31 @@ if st.button("Analyze Matchup", use_container_width=True):
     
     prob = model.predict_proba(input_df)[0][1]
     
+    # --- SCORE SIMULATION ALGORITHM ---
+    # We use PPM (Points per Minute) x 30 minutes of possession
+    # Then we adjust by the opponent's SOS (Defensive strength)
+    avg_pts_allowed = lookup_df['roll_pts_allowed'].mean()
+    
+    h_sim_base = h_stats['roll_ppm'] * 30
+    a_sim_base = a_stats['roll_ppm'] * 30
+    
+    # Adjust score based on SOS (If opponent allows fewer pts than avg, reduce score)
+    h_adj = (a_stats['roll_pts_allowed'] / avg_pts_allowed) if avg_pts_allowed > 0 else 1
+    a_adj = (h_stats['roll_pts_allowed'] / avg_pts_allowed) if avg_pts_allowed > 0 else 1
+    
+    h_final = round(h_sim_base * h_adj + (0 if is_neutral else 3)) # Home field bump
+    a_final = round(a_sim_base * a_adj)
+    
     # --- RESULTS DISPLAY ---
     st.divider()
+    
+    # Scoreboard View
+    st.subheader("🏟️ Predicted Final Score")
+    sb1, sb2, sb3 = st.columns([2, 1, 2])
+    sb1.metric(h_team, h_final)
+    sb2.markdown("<h2 style='text-align: center;'>vs</h2>", unsafe_allow_html=True)
+    sb3.metric(a_team, a_final)
+
     if prob > 0.5:
         st.success(f"### 🏆 Projected Winner: **{h_team}**")
         win_prob = prob
@@ -71,27 +95,23 @@ if st.button("Analyze Matchup", use_container_width=True):
 
     # --- KEYS TO THE GAME ---
     st.subheader(f"🔑 Keys to the Game for {winner_name}")
-    
     keys = []
-    # Key 1: Efficiency (Yards Per Play)
     if h_stats['roll_ypp'] > a_stats['roll_ypp'] and winner_name == h_team:
-        keys.append(f"**Explosive Advantage:** {h_team} is gaining {h_stats['roll_ypp'] - a_stats['roll_ypp']:.1f} more yards per play than {a_team}.")
+        keys.append(f"**Explosive Advantage:** {h_team} is gaining {h_stats['roll_ypp'] - a_stats['roll_ypp']:.1f} more yards per play.")
     elif a_stats['roll_ypp'] > h_stats['roll_ypp'] and winner_name == a_team:
-        keys.append(f"**Explosive Advantage:** {a_team} is averaging {a_stats['roll_ypp']:.1f} yards per play, outpacing the defense.")
+        keys.append(f"**Explosive Advantage:** {a_team} is outpacing the defense in efficiency.")
 
-    # Key 2: Ball Security
     if h_stats['roll_turnovers'] < a_stats['roll_turnovers'] and winner_name == h_team:
-        keys.append(f"**Clean Football:** {h_team} is protecting the ball better (Avg {h_stats['roll_turnovers']:.1f} TOs) than {a_team}.")
+        keys.append(f"**Clean Football:** {h_team} protects the ball better than {a_team}.")
     elif a_stats['roll_turnovers'] < h_stats['roll_turnovers'] and winner_name == a_team:
         keys.append(f"**Ball Security:** {a_team} wins the turnover battle on paper.")
 
-    # Key 3: Strength of Schedule
     if h_stats['opp_def_strength'] > a_stats['opp_def_strength'] and winner_name == h_team:
-        keys.append(f"**Battle Tested:** {h_team} has performed against tougher defenses recently.")
+        keys.append(f"**Battle Tested:** {h_team} has performed against tougher competition.")
     elif a_stats['opp_def_strength'] > h_stats['opp_def_strength'] and winner_name == a_team:
-        keys.append(f"**Schedule Strength:** {a_team} is coming off a more difficult slate of opponents.")
+        keys.append(f"**Schedule Strength:** {a_team} is coming off a more difficult slate.")
 
-    for key in keys[:3]: # Show top 3 keys
+    for key in keys[:3]:
         st.write(f"✅ {key}")
 
     # --- ADVANCED STATS COMPARISON ---
