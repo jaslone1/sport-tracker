@@ -42,26 +42,28 @@ if st.button("Analyze Matchup", use_container_width=True):
     a_stats = lookup_df[lookup_df['team'] == a_team].iloc[0]
     
     # 2. Construct input for the model
-    # Note: These names MUST match the features list in train_model.py
+    # CRITICAL: These must EXACTLY match the 'features' list from train_model.py
     input_df = pd.DataFrame([{
         'neutral_site': 1 if is_neutral else 0,
-        'h_roll_pts': h_stats['roll_pts_scored'],
-        'h_roll_yds': h_stats['roll_yards'],
-        'h_roll_to': h_stats['roll_turnovers'],
-        'h_roll_opp_pts': h_stats['roll_pts_allowed'],
-        'a_roll_pts': a_stats['roll_pts_scored'],
-        'a_roll_yds': a_stats['roll_yards'],
-        'a_roll_to': a_stats['roll_turnovers'],
-        'a_roll_opp_pts': a_stats['roll_pts_allowed']
+        'h_roll_pts_scored': h_stats['roll_pts_scored'],
+        'h_roll_ypp': h_stats['roll_ypp'],
+        'h_roll_ppm': h_stats['roll_ppm'],
+        'h_roll_turnovers': h_stats['roll_turnovers'],
+        'h_sos': h_stats['opp_def_strength'],
+        'a_roll_pts_scored': a_stats['roll_pts_scored'],
+        'a_roll_ypp': a_stats['roll_ypp'],
+        'a_roll_ppm': a_stats['roll_ppm'],
+        'a_roll_turnovers': a_stats['roll_turnovers'],
+        'a_sos': a_stats['opp_def_strength']
     }])
     
     # 3. Predict
+    # Use predict_proba to get the percentage chance of a Home Win (column 1)
     prob = model.predict_proba(input_df)[0][1]
     
     # --- DISPLAY RESULTS ---
     st.divider()
     
-    # Display Winner Header
     if prob > 0.5:
         st.success(f"### 🏆 Projected Winner: **{h_team}**")
         win_prob = prob
@@ -69,24 +71,29 @@ if st.button("Analyze Matchup", use_container_width=True):
         st.warning(f"### 🏆 Projected Winner: **{a_team}**")
         win_prob = 1 - prob
 
-    st.write(f"Confidence Level: **{win_prob:.1%}**")
+    st.write(f"Win Probability: **{win_prob:.1% Rose}**")
     st.progress(win_prob)
 
     # --- ADVANCED STATS COMPARISON ---
-    st.subheader("📊 Matchup Breakdown (Last 3 Games)")
-    c1, c2, c3 = st.columns(3)
+    st.subheader("📊 Advanced Matchup Metrics")
+    c1, c2, c3, c4 = st.columns(4)
     
     with c1:
-        st.write("**Avg Points**")
-        st.metric(h_team, f"{h_stats['roll_pts_scored']:.1f}")
-        st.metric(a_team, f"{a_stats['roll_pts_scored']:.1f}")
+        st.write("**Yards Per Play**")
+        st.metric(h_team, f"{h_stats['roll_ypp']:.2f}")
+        st.metric(a_team, f"{a_stats['roll_ypp']:.2f}")
 
     with c2:
-        st.write("**Avg Yards**")
-        st.metric(h_team, f"{h_stats['roll_yards']:.0f}")
-        st.metric(a_team, f"{a_stats['roll_yards']:.0f}")
+        st.write("**Points Per Min**")
+        st.metric(h_team, f"{h_stats['roll_ppm']:.2f}")
+        st.metric(a_team, f"{a_stats['roll_ppm']:.2f}")
 
     with c3:
-        st.write("**Avg Turnovers**")
+        st.write("**Turnovers**")
         st.metric(h_team, f"{h_stats['roll_turnovers']:.1f}")
         st.metric(a_team, f"{a_stats['roll_turnovers']:.1f}")
+        
+    with c4:
+        st.write("**SOS (Opp Pts Allowed)**")
+        st.metric(h_team, f"{h_stats['opp_def_strength']:.1f}")
+        st.metric(a_team, f"{a_stats['opp_def_strength']:.1f}")
