@@ -15,13 +15,13 @@ def load_assets():
 model, lookup_df = load_assets()
 
 # --- HEADER ---
-st.title("🏈 2026 Marquee Matchup Center")
-st.markdown("Detailed AI analysis for this week's biggest games.")
+st.title("2026 Marquee Matchup Center")
+st.markdown("Detailed analysis for this week's games.")
 
 # --- MARQUEE MATCHUPS ---
 marquee_games = [
-    {"label": "🔥 Game of the Week: Ole Miss vs Miami", "home": "Ole Miss", "away": "Miami", "neutral": False},
-    {"label": "🌲 B1G Showdown: Indiana vs Oregon", "home": "Indiana", "away": "Oregon", "neutral": False}
+    {"label": "Thursday Semi-Final: Ole Miss vs Miami", "home": "Ole Miss", "away": "Miami", "neutral": True},
+    {"label": "Friday Semi-Final: Indiana vs Oregon", "home": "Indiana", "away": "Oregon", "neutral": True}
 ]
 
 selected_marquee = st.radio("Select a Featured Matchup to Analyze:", [g['label'] for g in marquee_games], horizontal=True)
@@ -72,7 +72,7 @@ run_analysis(current_game['home'], current_game['away'], current_game['neutral']
 
 # --- MANUAL CALCULATOR SECTION ---
 st.divider()
-with st.expander("🛠️ Custom Matchup Calculator"):
+with st.expander("Custom Matchup Calculator"):
     st.write("Predict any other FBS matchup below.")
     teams = sorted(lookup_df['team'].unique())
     c1, c2 = st.columns(2)
