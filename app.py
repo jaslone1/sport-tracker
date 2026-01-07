@@ -28,28 +28,28 @@ model, all_stats_df = load_assets()
 
 # --- PREDICTION LOGIC ---
 def get_prediction(home_team, away_team):
-    # 1. Find the most recent game for the Home Team to get their current 'rolling average'
-    # We look in both home and away columns to find their absolute latest performance
+    # 1. Get stats
     home_latest = all_stats_df[all_stats_df['home_team'] == home_team].iloc[-1:]
     away_latest = all_stats_df[all_stats_df['away_team'] == away_team].iloc[-1:]
     
     if home_latest.empty or away_latest.empty:
         return None, "Team stats not found"
 
-    # 2. Extract the features our model was trained on: ['h_avg_pts', 'a_avg_pts']
-    # Note: In our feature_engineering, we used 'h_avg_pts' for the home team
-    h_pts = home_latest['h_avg_pts'].values[0]
-    a_pts = away_latest['a_avg_pts'].values[0]
+    # 2. Extract stats
+    h_pts = float(home_latest['h_avg_pts'].values[0])
+    a_pts = float(away_latest['a_avg_pts'].values[0])
     
-    # 3. Prepare input for the model
-    # The model expects a 2D array: [[home_pts, away_pts]]
-    input_data = np.array([[h_pts, a_pts]])
+    # 3. Create a DataFrame with the SAME column names used in training
+    # This prevents Scikit-Learn 'feature name' warnings/errors
+    input_df = pd.DataFrame([[h_pts, a_pts]], columns=['h_avg_pts', 'a_avg_pts'])
     
     # 4. Predict
-    # Random Forest's predict_proba returns [prob_loss, prob_win]
-    prob = model.predict_proba(input_data)[0][1]
-    
-    return prob, "Success"
+    try:
+        # predict_proba returns [[prob_0, prob_1]]
+        prob = model.predict_proba(input_df)[0][1]
+        return prob, "Success"
+    except Exception as e:
+        return None, f"Prediction Error: {str(e)}"
 
 # --- UI ---
 st.set_page_config(page_title="CFB Predictor", page_icon="🏈")
