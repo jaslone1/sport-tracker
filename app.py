@@ -40,23 +40,47 @@ def simulate_matchup(h_name, a_name, neutral):
     return winner, prob, h_score, a_score
 
 # --- UI HEADER ---
-st.title("CFB Mini-Playoff Simulator")
-st.markdown("Predicting the Semi-Finals and the Neutral-Site Championship.")
-
-# --- SEMI-FINALS ---
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Semi-Final 1")
     w1, p1, s1h, s1a = simulate_matchup("Ole Miss", "Miami", False)
-    st.write(f"**Ole Miss {s1h} - Miami {s1a}**")
+    st.write(f"### **Ole Miss {s1h} - Miami {s1a}**")
     st.info(f"Projected Winner: **{w1}** ({p1 if w1=='Ole Miss' else 1-p1:.1%} confidence)")
+    
+    # NEW: Stat Breakdown for Semi-Final 1
+    h_s1 = lookup_df[lookup_df['team'] == "Ole Miss"].iloc[0]
+    a_s1 = lookup_df[lookup_df['team'] == "Miami"].iloc[0]
+    
+    m1, m2 = st.columns(2)
+    with m1:
+        st.write("**Ole Miss**")
+        st.write(f"YPP: {h_s1['roll_ypp']:.2f}")
+        st.write(f"PPM: {h_s1['roll_ppm']:.2f}")
+    with m2:
+        st.write("**Miami**")
+        st.write(f"YPP: {a_s1['roll_ypp']:.2f}")
+        st.write(f"PPM: {a_s1['roll_ppm']:.2f}")
 
 with col2:
     st.subheader("Semi-Final 2")
     w2, p2, s2h, s2a = simulate_matchup("Indiana", "Oregon", False)
-    st.write(f"**Indiana {s2h} - Oregon {s2a}**")
+    st.write(f"### **Indiana {s2h} - Oregon {s2a}**")
     st.info(f"Projected Winner: **{w2}** ({p2 if w2=='Indiana' else 1-p2:.1%} confidence)")
+
+    # NEW: Stat Breakdown for Semi-Final 2
+    h_s2 = lookup_df[lookup_df['team'] == "Indiana"].iloc[0]
+    a_s2 = lookup_df[lookup_df['team'] == "Oregon"].iloc[0]
+
+    m3, m4 = st.columns(2)
+    with m3:
+        st.write("**Indiana**")
+        st.write(f"YPP: {h_s2['roll_ypp']:.2f}")
+        st.write(f"PPM: {h_s2['roll_ppm']:.2f}")
+    with m4:
+        st.write("**Oregon**")
+        st.write(f"YPP: {a_s2['roll_ypp']:.2f}")
+        st.write(f"PPM: {a_s2['roll_ppm']:.2f}")
 
 # --- CHAMPIONSHIP (THE WINNERS PLAY HERE) ---
 st.divider()
