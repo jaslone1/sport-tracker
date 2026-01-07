@@ -71,7 +71,7 @@ sc1.metric(w1, csh)
 sc2.markdown("<h1 style='text-align: center;'>VS</h1>", unsafe_allow_html=True)
 sc3.metric(w2, csa)
 
-st.success(f"### 🎊 AI Predicts **{cw}** to win the Championship!")
+st.success(f"### AI Predicts **{cw}** to win the Championship!")
 st.write(f"Confidence in {cw}: **{cp if cw==w1 else 1-cp:.1%}**")
 
 
