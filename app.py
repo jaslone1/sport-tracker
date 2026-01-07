@@ -21,7 +21,7 @@ def simulate_matchup(h_name, a_name, neutral):
     h_stats = lookup_df[lookup_df['team'] == h_name].iloc[0]
     a_stats = lookup_df[lookup_df['team'] == a_name].iloc[0]
     
-    # 1. ML Logic (Internal)
+    # 1. ML Prediction (The "Truth")
     input_df = pd.DataFrame([{
         'neutral_site': 1 if neutral else 0,
         'h_roll_pts_scored': h_stats['roll_pts_scored'], 'h_roll_ypp': h_stats['roll_ypp'],
@@ -30,18 +30,25 @@ def simulate_matchup(h_name, a_name, neutral):
         'a_roll_ppm': a_stats['roll_ppm'], 'a_roll_turnovers': a_stats['roll_turnovers'], 'a_sos': a_stats['opp_def_strength']
     }])
     prob = model.predict_proba(input_df)[0][1]
-    
-    # 2. Advanced Score Logic (Using Finishing Drives & Havoc)
-    avg_pts_allowed = lookup_df['roll_pts_allowed'].mean()
-    # Base points from PPM
-    h_base = h_stats['roll_ppm'] * 30
-    a_base = a_stats['roll_ppm'] * 30
-    
-    # Simulation Adjustments
-    h_score = round(h_base * (a_stats['roll_pts_allowed'] / avg_pts_allowed) + (0 if neutral else 3))
-    a_score = round(a_base * (h_stats['roll_pts_allowed'] / avg_pts_allowed))
-    
     winner = h_name if prob > 0.5 else a_name
+
+    # 2. Total Points Logic (Based on combined PPM)
+    # Assume roughly 60 mins of total play time
+    projected_total = (h_stats['roll_ppm'] + a_stats['roll_ppm']) * 30 
+    
+    # 3. Use Win Probability to define the "Spread"
+    # A 60% win prob is roughly a 3-point spread in CFB
+    # Formula: Spread = (Prob - 0.5) * 30 (Adjust 30 to change how "blown out" games get)
+    margin = (prob - 0.5) * 30
+    
+    # 4. Derive Scores from Total and Margin
+    # Score1 + Score2 = Total; Score1 - Score2 = Margin
+    h_score = round((projected_total + margin) / 2)
+    a_score = round((projected_total - margin) / 2)
+    
+    # Ensure scores are non-negative and actually show the winner
+    if h_score == a_score: h_score += 1 if prob > 0.5 else -1
+
     return winner, prob, h_score, a_score, h_stats, a_stats
 
 # --- UI ---
