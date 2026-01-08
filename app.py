@@ -17,44 +17,39 @@ def load_assets():
 
 model, lookup_df = load_assets()
 
-def simulate_matchup(h_name, a_name, neutral):
+def simulate_matchup(h_name, a_name, neutral, weights):
     h_stats = lookup_df[lookup_df['team'] == h_name].iloc[0]
     a_stats = lookup_df[lookup_df['team'] == a_name].iloc[0]
-    
-    # 1. ML Prediction (The "Truth")
-    input_df = pd.DataFrame([{
-        'neutral_site': 1 if neutral else 0,
-        'h_roll_pts_scored': h_stats['roll_pts_scored'], 'h_roll_ypp': h_stats['roll_ypp'],
-        'h_roll_ppm': h_stats['roll_ppm'], 'h_roll_turnovers': h_stats['roll_turnovers'], 'h_sos': h_stats['opp_def_strength'],
-        'a_roll_pts_scored': a_stats['roll_pts_scored'], 'a_roll_ypp': a_stats['roll_ypp'],
-        'a_roll_ppm': a_stats['roll_ppm'], 'a_roll_turnovers': a_stats['roll_turnovers'], 'a_sos': a_stats['opp_def_strength']
-    }])
-    prob = model.predict_proba(input_df)[0][1]
-    winner = h_name if prob > 0.5 else a_name
 
-    # 2. Total Points Logic (Based on combined PPM)
-    # Assume roughly 60 mins of total play time
-    projected_total = (h_stats['roll_ppm'] + a_stats['roll_ppm']) * 30 
-    
-    # 3. Use Win Probability to define the "Spread"
-    # A 60% win prob is roughly a 3-point spread in CFB
-    # Formula: Spread = (Prob - 0.5) * 30 (Adjust 30 to change how "blown out" games get)
-    margin = (prob - 0.5) * 30
-    
-    # 4. Derive Scores from Total and Margin
-    # Score1 + Score2 = Total; Score1 - Score2 = Margin
-    h_score = round((projected_total + margin) / 2)
-    a_score = round((projected_total - margin) / 2)
-    
-    # Ensure scores are non-negative and actually show the winner
-    if h_score == a_score: h_score += 1 if prob > 0.5 else -1
+    # Apply Weights to the Features
+    # Note: We multiply the 'gap' or 'strength' by the user's weight
+    ypp_impact = (h_stats['roll_ypp'] - a_stats['roll_ypp']) * weights['explosiveness']
+    ppm_impact = (h_stats['roll_ppm'] - a_stats['roll_ppm']) * weights['efficiency']
+    def_impact = (h_stats['opp_def_strength'] - a_stats['opp_def_strength']) * weights['defense']
 
-    return winner, prob, h_score, a_score, h_stats, a_stats
+    # Recalculate Probability based on 'Weighted Strength'
+    # This is a simplified linear adjustment for the UI
+    total_tilt = (ypp_impact * 0.1) + (ppm_impact * 0.2) + (def_impact * 0.05)
+    
+    # Adjust the model's base probability
+    base_prob = model.predict_proba(input_df)[0][1]
+    final_prob = np.clip(base_prob + total_tilt, 0.01, 0.99)
+    
+    return final_prob
 
 # --- UI ---
 st.title("CFB Mini-Playoff Simulator")
 st.markdown("Advanced AI-driven analysis using **Efficiency (YPP)**, **Havoc**, and **Finishing Drives**.")
 
+with st.sidebar:
+    st.header("⚖️ Model Calibration")
+    st.write("Adjust how much the AI values each category:")
+    
+    # Weight Sliders (1.0 = Default, 2.0 = Double Importance)
+    w_explosiveness = st.slider("Explosiveness (YPP)", 0.5, 3.0, 1.0)
+    w_efficiency = st.slider("Efficiency (PPM)", 0.5, 3.0, 1.0)
+    w_defense = st.slider("Defense (Havoc/SOS)", 0.5, 3.0, 1.0)
+    
 col1, col2 = st.columns(2)
 
 # SEMI-FINAL 1
