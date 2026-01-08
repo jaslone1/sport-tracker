@@ -103,3 +103,50 @@ c_col2.markdown("<h2 style='text-align: center;'>VS</h2>", unsafe_allow_html=Tru
 c_col3.metric(w2, csa)
 
 st.success(f"### Predicted Champion: **{cw}**")
+
+# --- FULL STAT COMPARISON TABLE ---
+st.divider()
+st.subheader("📊 The Tale of the Tape")
+st.write("A deep dive into every available metric for the finalists.")
+
+# Create a full stats comparison dataframe
+comp_data = {
+    "Metric": [
+        "Pts Scored (Roll)", "Pts Allowed (Roll)", 
+        "Yards Per Play", "Points Per Minute", 
+        "Turnover Average", "Strength of Schedule"
+    ],
+    w1: [
+        f"{cwhs['roll_pts_scored']:.1f}", f"{cwhs['roll_pts_allowed']:.1f}",
+        f"{cwhs['roll_ypp']:.2f}", f"{cwhs['roll_ppm']:.2f}",
+        f"{cwhs['roll_turnovers']:.1f}", f"{cwhs['opp_def_strength']:.1f}"
+    ],
+    w2: [
+        f"{cwas['roll_pts_scored']:.1f}", f"{cwas['roll_pts_allowed']:.1f}",
+        f"{cwas['roll_ypp']:.2f}", f"{cwas['roll_ppm']:.2f}",
+        f"{cwas['roll_turnovers']:.1f}", f"{cwas['opp_def_strength']:.1f}"
+    ]
+}
+st.table(pd.DataFrame(comp_data))
+
+# --- AI LOGIC VISUALIZER ---
+st.subheader("🧠 What the AI is Watching")
+st.write("This chart shows the 'Fixed' weights the model learned from historical data.")
+
+if hasattr(model, 'feature_importances_'):
+    # Match importance scores to your input columns
+    feat_names = [
+        'Neutral Site', 'H: Pts', 'H: YPP', 'H: PPM', 'H: TOs', 'H: SOS',
+        'A: Pts', 'A: YPP', 'A: PPM', 'A: TOs', 'A: SOS'
+    ]
+    importances = model.feature_importances_
+    
+    # Create a simple bar chart
+    importance_df = pd.DataFrame({
+        'Feature': feat_names,
+        'Importance': importances
+    }).sort_values(by='Importance', ascending=False)
+    
+    st.bar_chart(importance_df.set_index('Feature'))
+else:
+    st.info("Model type does not support raw feature importance extraction.")
