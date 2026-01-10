@@ -1,86 +1,92 @@
 import requests
 import pandas as pd
-from datetime import datetime
-import os
 import time
+import os
 
-# -----------------------------
-# CONFIGURATION
-# -----------------------------
 CFB_API_KEY = "3yZC6fPALRy4yRPtRMjghq/Mmrpe+R7FvMDYWae+7NqbMON8tH40idSddmQ+Yc/N"
-CURRENT_YEAR = datetime.now().year
-START_YEAR = CURRENT_YEAR - 9 
-# Use the team stats endpoint for richer ML features
-CFB_STATS_URL = "https://api.collegefootballdata.com/games/teams"
+HEADERS = {"Authorization": f"Bearer {CFB_API_KEY}", "Accept": "application/json"}
+YEARS = [2022, 2023, 2024, 2025] # Added 2025
 
-def flatten_stats(game_data):
-    """
-    Converts the nested API stats list into a flat dictionary 
-    with home_ and away_ prefixes.
-    """
-    row = {
-        "game_id": game_data.get("id"),
-        "year": game_data.get("season"),
-        "week": game_data.get("week"),
-        "season_type": game_data.get("season_type")
-    }
+def fetch_and_merge():
+    all_game_records = []
 
-    for team_entry in game_data.get("teams", []):
-        prefix = "home_" if team_entry.get("homeAway") == "home" else "away_"
-        row[f"{prefix}team"] = team_entry.get("school")
-        row[f"{prefix}conference"] = team_entry.get("conference")
-        row[f"{prefix}points"] = team_entry.get("points")
+    for year in YEARS:
+        print(f"📅 Fetching scores for {year}...")
+        g_url = f"https://api.collegefootballdata.com/games?year={year}&seasonType=both"
+        g_data = requests.get(g_url, headers=HEADERS).json()
+        
+        # Create a dictionary for quick score lookups
+        game_context = {
+            g['id']: {
+                'neutral': 1 if g.get('neutral_site') else 0,
+                'h_pts': g.get('home_points'),
+                'a_pts': g.get('away_points')
+            } for g in g_data if isinstance(g, dict)
+        }
 
-        # Flatten the stats list into individual columns
-        for s in team_entry.get("stats", []):
-            category = s.get("category")
-            stat_val = s.get("stat")
-            # Convert string stats (like '30:00' or '5-10') if necessary, 
-            # but usually, numeric categories are standard strings.
-            row[f"{prefix}{category}"] = stat_val
+        for week in range(1, 16):
+            print(f"📊 Processing {year} Week {week}...")
+            t_url = f"https://api.collegefootballdata.com/games/teams?year={year}&week={week}&seasonType=regular"
+            t_resp = requests.get(t_url, headers=HEADERS).json()
 
-    return row
-
-def fetch_fbs_stats():
-    all_game_rows = []
-    headers = {"Authorization": f"Bearer {CFB_API_KEY}"}
-
-    print(f"🏈 Fetching box scores from {START_YEAR} to {CURRENT_YEAR}...")
-
-    for year in range(START_YEAR, CURRENT_YEAR + 1):
-        for season_type in ["regular", "postseason"]:
-            params = {"year": year, "seasonType": season_type}
-            response = requests.get(CFB_STATS_URL, headers=headers, params=params)
-
-            if response.status_code != 200:
-                print(f"🚨 Error {year} {season_type}: {response.status_code}")
+            if not isinstance(t_resp, list):
                 continue
 
-            games = response.json()
+            for game in t_resp:
+                gid = game.get('id')
+                ctx = game_context.get(gid, {}) # Get context or empty dict
+
+                row = {
+                    "game_id": gid, 
+                    "year": year, 
+                    "week": week,
+                    "neutral_site": ctx.get('neutral', 0)
+                }
+
+                # Pull points from context, but use team data as backup
+                h_pts, a_pts = ctx.get('h_pts'), ctx.get('a_pts')
+
+                for team in game.get("teams", []):
+                    is_home = team.get("homeAway") == "home"
+                    prefix = "h_" if is_home else "a_"
+                    row[f"{prefix}team"] = team.get("team")
+                    
+                    # If context failed, grab the points from the team data itself
+                    if is_home and h_pts is None: 
+                        h_pts = team.get("points")
+                    if not is_home and a_pts is None: 
+                        a_pts = team.get("points")
+
+                    for s in team.get("stats", []):
+                        cat, val = s.get("category"), s.get("stat")
+                        if cat == 'totalYards': 
+                            row[f"{prefix}yds"] = float(val)
+                        if cat == 'turnovers': 
+                            row[f"{prefix}to"] = float(val)
+                        if cat == 'possessionTime': 
+                            minutes, seconds = map(int, val.split(':'))
+                            row[f"{prefix}pos_sec"] = minutes * 60 + seconds
+                        if cat == 'totalPenaltiesYards':
+                            row[f"{prefix}pen_yds"] = float(val.split('-')[1])
+                        if cat == 'rushingAttempts' or cat == 'completionAttempts':
+                            row[f"{prefix}{cat}"] = float(val.split('-')[-1] if '-' in val else val)
+
+                # Assign points and calculate win
+                row["home_points"] = h_pts if h_pts is not None else 0
+                row["away_points"] = a_pts if a_pts is not None else 0
+                row["home_win"] = 1 if row["home_points"] > row["away_points"] else 0
+                
+                all_game_records.append(row)
             
-            # Filter for FBS vs FBS and flatten
-            for g in games:
-                # Check if both teams have a conference (standard way to identify FBS)
-                if all(t.get("conference") for t in g.get("teams", [])):
-                    all_game_rows.append(flatten_stats(g))
+            time.sleep(0.6)
 
-            print(f"   ✅ Processed {len(games)} games for {year} {season_type}")
-            time.sleep(0.5)
-
-    # --- Save Results ---
-    if not all_game_rows:
-        print("❌ No data found.")
-        return
-
-    df = pd.DataFrame(all_game_rows)
-    
-    # Calculate Winner (useful for ML Target)
-    df["home_win"] = df["home_points"].astype(float) > df["away_points"].astype(float)
-    
-    os.makedirs("data", exist_ok=True)
-    output_path = "data/detailed_stats.csv"
-    df.to_csv(output_path, index=False)
-    print(f"\n🚀 Success! Saved {len(df)} games with detailed stats to {output_path}")
+    # Final cleanup and save
+    if not os.path.exists("data"):
+        os.makedirs("data")
+        
+    df = pd.DataFrame(all_game_records).drop_duplicates(subset='game_id')
+    df.to_csv("data/detailed_stats.csv", index=False)
+    print(f"🚀 Success! {len(df)} games saved with full scores.")
 
 if __name__ == "__main__":
-    fetch_fbs_stats()
+    fetch_and_merge()
