@@ -63,31 +63,43 @@ def simulate_matchup(h_name, a_name, neutral, weights=None):
 
 
 def get_tape_df(h_name, a_name):
-    h_s = lookup_df[lookup_df['team'] == h_name]
-    a_s = lookup_df[lookup_df['team'] == a_name]
+    h_s = lookup_df[lookup_df["team"] == h_name]
+    a_s = lookup_df[lookup_df["team"] == a_name]
     if h_s.empty or a_s.empty:
         return pd.DataFrame()
 
     h_s = h_s.iloc[0]
     a_s = a_s.iloc[0]
 
-    return pd.DataFrame({
-        "Metric": ["Pts/Game", "Yards/Play", "Pts/Minute", "Turnovers", "SOS"],
-        h_name: [
-            f"{h_s['roll_pts_scored']:.1f}",
-            f"{h_s['roll_ypp']:.2f}",
-            f"{h_s['roll_ppm']:.2f}",
-            f"{h_s['roll_turnovers']:.1f}",
-            f"{h_s['opp_def_strength']:.1f}"
-        ],
-        a_name: [
-            f"{a_s['roll_pts_scored']:.1f}",
-            f"{a_s['roll_ypp']:.2f}",
-            f"{a_s['roll_ppm']:.2f}",
-            f"{a_s['roll_turnovers']:.1f}",
-            f"{a_s['opp_def_strength']:.1f}"
-        ]
-    })
+    # Safe fallback for SOS / Opponent Defensive Strength
+    h_sos_val = h_s.get("opp_def_strength", h_s.get("roll_pts_allowed", 0))
+    a_sos_val = a_s.get("opp_def_strength", a_s.get("roll_pts_allowed", 0))
+
+    return pd.DataFrame(
+        {
+            "Metric": [
+                "Pts/Game",
+                "Yards/Play",
+                "Pts/Minute",
+                "Turnovers",
+                "SOS",
+            ],
+            h_name: [
+                f"{h_s.get('roll_pts_scored', 0):.1f}",
+                f"{h_s.get('roll_ypp', 0):.2f}",
+                f"{h_s.get('roll_ppm', 0):.2f}",
+                f"{h_s.get('roll_turnovers', 0):.1f}",
+                f"{h_sos_val:.1f}",
+            ],
+            a_name: [
+                f"{a_s.get('roll_pts_scored', 0):.1f}",
+                f"{a_s.get('roll_ypp', 0):.2f}",
+                f"{a_s.get('roll_ppm', 0):.2f}",
+                f"{a_s.get('roll_turnovers', 0):.1f}",
+                f"{a_sos_val:.1f}",
+            ],
+        }
+    )
 
 
 st.title("🏈 FBS Weekly Predictions")
