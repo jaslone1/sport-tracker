@@ -23,8 +23,12 @@ def create_ml_features():
     df['h_ypp'] = df['h_yds'] / df['h_plays'].replace(0, 1)
     df['a_ypp'] = df['a_yds'] / df['a_plays'].replace(0, 1)
 
-    df['h_ppm'] = df['home_points'] / (df['h_pos_sec'] / 60).replace(0, 1)
-    df['a_ppm'] = df['away_points'] / (df['a_pos_sec'] / 60).replace(0, 1)
+    # Default to 1800 seconds (30 minutes) if time of possession is missing or zero
+    df['h_pos_sec'] = df['h_pos_sec'].replace(0, 1800)
+    df['a_pos_sec'] = df['a_pos_sec'].replace(0, 1800)
+
+    df['h_ppm'] = df['home_points'] / (df['h_pos_sec'] / 60)
+    df['a_ppm'] = df['away_points'] / (df['a_pos_sec'] / 60)
 
     h_cols = ['year', 'week', 'h_team', 'h_yds', 'h_to', 'h_ypp', 'h_ppm', 'h_pen_yds', 'home_points', 'away_points']
     a_cols = ['year', 'week', 'a_team', 'a_yds', 'a_to', 'a_ypp', 'a_ppm', 'a_pen_yds', 'away_points', 'home_points']
@@ -38,13 +42,16 @@ def create_ml_features():
     perf_df = pd.concat([home_df, away_df]).sort_values(['team', 'year', 'week'])
 
     stats_to_roll = ['yards', 'turnovers', 'ypp', 'ppm', 'pen_yds', 'pts_scored', 'pts_allowed']
+
     for stat in stats_to_roll:
-        perf_df[f'roll_{stat}'] = perf_df.groupby(['team', 'year'])[stat].transform(
-            lambda x: x.rolling(window=3, min_periods=1).mean().shift(1)
+        perf_df[f'roll_{stat}'] = (
+            perf_df.groupby(['team', 'year'])[stat]
+            .transform(lambda x: x.rolling(window=3, min_periods=1).mean().shift(1))
         )
 
-    perf_df['opp_def_strength'] = perf_df.groupby(['team', 'year'])['pts_allowed'].transform(
-        lambda x: x.rolling(window=3, min_periods=1).mean().shift(1)
+    perf_df['opp_def_strength'] = (
+        perf_df.groupby(['team', 'year'])['pts_allowed']
+        .transform(lambda x: x.rolling(window=3, min_periods=1).mean().shift(1))
     )
 
     latest_stats = perf_df.sort_values('year').groupby('team').tail(1)
