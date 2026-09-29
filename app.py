@@ -27,24 +27,31 @@ def simulate_matchup(h_name, a_name, neutral, weights=None):
     h_stats = h_stats.iloc[0]
     a_stats = a_stats.iloc[0]
 
+    # Check for NaN values in critical rolling stats to avoid conversion errors
+    if pd.isna(h_stats.get('roll_ppm')) or pd.isna(a_stats.get('roll_ppm')):
+        return None, None, None, None
+
     input_df = pd.DataFrame([{
         'neutral_site': 1 if neutral else 0,
-        'h_roll_pts_scored': h_stats['roll_pts_scored'],
-        'h_roll_ypp': h_stats['roll_ypp'],
+        'h_roll_pts_scored': h_stats.get('roll_pts_scored', 0),
+        'h_roll_ypp': h_stats.get('roll_ypp', 0),
         'h_roll_ppm': h_stats['roll_ppm'],
-        'h_roll_turnovers': h_stats['roll_turnovers'],
-        'h_sos': h_stats['opp_def_strength'],
-        'a_roll_pts_scored': a_stats['roll_pts_scored'],
-        'a_roll_ypp': a_stats['roll_ypp'],
+        'h_roll_turnovers': h_stats.get('roll_turnovers', 0),
+        'h_sos': h_stats.get('opp_def_strength', 0),
+        'a_roll_pts_scored': a_stats.get('roll_pts_scored', 0),
+        'a_roll_ypp': a_stats.get('roll_ypp', 0),
         'a_roll_ppm': a_stats['roll_ppm'],
-        'a_roll_turnovers': a_stats['roll_turnovers'],
-        'a_sos': a_stats['opp_def_strength']
+        'a_roll_turnovers': a_stats.get('roll_turnovers', 0),
+        'a_sos': a_stats.get('opp_def_strength', 0)
     }])
+
+    # Fill any remaining NaNs in the input DataFrame with 0
+    input_df = input_df.fillna(0)
 
     prob = model.predict_proba(input_df)[0][1]
 
     if weights:
-        ypp_gap = (h_stats['roll_ypp'] - a_stats['roll_ypp']) * (weights['explosiveness'] - 1.0)
+        ypp_gap = (h_stats.get('roll_ypp', 0) - a_stats.get('roll_ypp', 0)) * (weights['explosiveness'] - 1.0)
         ppm_gap = (h_stats['roll_ppm'] - a_stats['roll_ppm']) * (weights['efficiency'] - 1.0)
         prob = np.clip(prob + (ypp_gap * 0.05 + ppm_gap * 0.1), 0.01, 0.99)
 
