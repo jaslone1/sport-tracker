@@ -5,8 +5,8 @@ import os
 from datetime import datetime
 
 CFB_API_KEY = "3yZC6fPALRy4yRPtRMjghq/Mmrpe+R7FvMDYWae+7NqbMON8tH40idSddmQ+Yc/N"
-HEADERS = {"Authorization": f"Bearer {CFB_API_KEY}", "Accept": "application/json"}
-YEARS = [2022, 2023, 2024, 2025]
+HEADERS = {"Authorization": f"Bearer {CFB_API_KEY}"}
+YEARS = [2022, 2023, 2024, 2025, 2026]
 
 
 def fetch_and_merge():
@@ -101,15 +101,15 @@ def fetch_scheduled_fbs_games():
 
     scheduled_games = []
     for game in g_data:
-        if (game.get('home_points') is None or game.get('away_points') is None):
+        if (game.get('homePoints') is None or game.get('awayPoints') is None):
             scheduled_games.append({
                 'game_id': game.get('id'),
                 'season': game.get('season'),
                 'week': game.get('week'),
-                'home_team': game.get('home_team'),
-                'away_team': game.get('away_team'),
-                'neutral_site': 1 if game.get('neutral_site') else 0,
-                'start_date': game.get('start_date')
+                'home_team': game.get('homeTeam'),
+                'away_team': game.get('awayTeam'),
+                'neutral_site': 1 if game.get('neutralSite') else 0,
+                'start_date': game.get('startDate')
             })
 
     df_scheduled = pd.DataFrame(scheduled_games)

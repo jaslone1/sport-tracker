@@ -54,6 +54,20 @@ def load_full_stats():
     return df
 
 
+@st.cache_data
+def load_scheduled_games():
+    scheduled_path = "data/scheduled_games.csv"
+    if not os.path.exists(scheduled_path):
+        return pd.DataFrame()
+    df = pd.read_csv(scheduled_path)
+    df = df.rename(columns={
+        "season": "year",
+        "home_team": "h_team",
+        "away_team": "a_team"
+    })
+    return df
+
+
 def get_tape_df(h_name, a_name, lookup_df):
     h_s = lookup_df[lookup_df["team"] == h_name]
     a_s = lookup_df[lookup_df["team"] == a_name]
@@ -182,6 +196,7 @@ st.title("🏈 NCAA Football Matchup Predictor")
 model = load_model()
 lookup_df = load_lookup_data()
 stats_df = load_full_stats()
+scheduled_df = load_scheduled_games()
 
 if model is None or lookup_df is None:
     st.error(
@@ -193,18 +208,21 @@ tab1, tab2 = st.tabs(["📅 Schedule Explorer", "⚔️ Custom Matchup Builder"]
 
 # TAB 1: SCHEDULE EXPLORER
 with tab1:
-    if stats_df is None or stats_df.empty:
-        st.warning("No schedule data found in `data/detailed_stats.csv`.")
+    if (stats_df is None or stats_df.empty) and (scheduled_df is None or scheduled_df.empty):
+        st.warning("No schedule data found.")
     else:
         st.subheader("Schedule Explorer")
-
-        available_years = sorted(stats_df["year"].unique(), reverse=True)
+        
+        # Combine
+        combined_df = pd.concat([stats_df, scheduled_df], ignore_index=True, sort=False)
+        
+        available_years = sorted(combined_df["year"].unique(), reverse=True)
         col_y, col_w = st.columns(2)
 
         with col_y:
             selected_year = st.selectbox("Select Season / Year", available_years, index=0)
 
-        year_filtered_df = stats_df[stats_df["year"] == selected_year]
+        year_filtered_df = combined_df[combined_df["year"] == selected_year]
         available_weeks = sorted(year_filtered_df["week"].unique(), reverse=True)
 
         with col_w:
