@@ -1,5 +1,6 @@
 import os
 import joblib
+import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -42,24 +43,15 @@ def load_lookup_data():
 
 
 @st.cache_data
-def load_latest_schedule():
+def load_full_stats():
     stats_path = "data/detailed_stats.csv"
     if not os.path.exists(stats_path):
-        return None, None, None
-
+        return None
     df = pd.read_csv(stats_path, sep=None, engine="python", encoding="utf-8-sig")
     df.columns = df.columns.str.strip()
-
     if "neutral_site" not in df.columns:
         df["neutral_site"] = 0
-
-    latest_year = df["year"].max()
-    latest_week = df[df["year"] == latest_year]["week"].max()
-
-    week_games = df[(df["year"] == latest_year) & (df["week"] == latest_week)]
-    schedule = week_games[["h_team", "a_team", "neutral_site"]].drop_duplicates()
-
-    return schedule, latest_year, latest_week
+    return df
 
 
 def get_tape_df(h_name, a_name, lookup_df):
@@ -85,18 +77,18 @@ def get_tape_df(h_name, a_name, lookup_df):
                 "Opp. Def Strength (SOS)",
             ],
             f"🏠 {h_name}": [
-                f"{h_s.get('roll_pts_scored', 0.0):.1f}",
-                f"{h_s.get('roll_ypp', 0.0):.2f}",
-                f"{h_s.get('roll_ppm', 0.0):.2f}",
-                f"{h_s.get('roll_turnovers', 0.0):.1f}",
-                f"{h_sos_val:.1f}",
+                f"{float(h_s.get('roll_pts_scored', 0.0)):.1f}",
+                f"{float(h_s.get('roll_ypp', 0.0)):.2f}",
+                f"{float(h_s.get('roll_ppm', 0.0)):.2f}",
+                f"{float(h_s.get('roll_turnovers', 0.0)):.1f}",
+                f"{float(h_sos_val):.1f}",
             ],
             f"✈️ {a_name}": [
-                f"{a_s.get('roll_pts_scored', 0.0):.1f}",
-                f"{a_s.get('roll_ypp', 0.0):.2f}",
-                f"{a_s.get('roll_ppm', 0.0):.2f}",
-                f"{a_s.get('roll_turnovers', 0.0):.1f}",
-                f"{a_sos_val:.1f}",
+                f"{float(a_s.get('roll_pts_scored', 0.0)):.1f}",
+                f"{float(a_s.get('roll_ypp', 0.0)):.2f}",
+                f"{float(a_s.get('roll_ppm', 0.0)):.2f}",
+                f"{float(a_s.get('roll_turnovers', 0.0)):.1f}",
+                f"{float(a_sos_val):.1f}",
             ],
         }
     )
@@ -119,23 +111,32 @@ def predict_matchup(h_team, a_team, is_neutral, model, lookup_df):
         [
             {
                 "neutral_site": 1 if is_neutral else 0,
-                "h_roll_pts_scored": h_s.get("roll_pts_scored", 0.0),
-                "h_roll_ypp": h_s.get("roll_ypp", 0.0),
-                "h_roll_ppm": h_s.get("roll_ppm", 0.0),
-                "h_roll_turnovers": h_s.get("roll_turnovers", 0.0),
-                "h_sos": h_sos_val,
-                "a_roll_pts_scored": a_s.get("roll_pts_scored", 0.0),
-                "a_roll_ypp": a_s.get("roll_ypp", 0.0),
-                "a_roll_ppm": a_s.get("roll_ppm", 0.0),
-                "a_roll_turnovers": a_s.get("roll_turnovers", 0.0),
-                "a_sos": a_sos_val,
+                "h_roll_pts_scored": float(h_s.get("roll_pts_scored", 0.0)),
+                "h_roll_ypp": float(h_s.get("roll_ypp", 0.0)),
+                "h_roll_ppm": float(h_s.get("roll_ppm", 0.0)),
+                "h_roll_turnovers": float(h_s.get("roll_turnovers", 0.0)),
+                "h_sos": float(h_sos_val),
+                "a_roll_pts_scored": float(a_s.get("roll_pts_scored", 0.0)),
+                "a_roll_ypp": float(a_s.get("roll_ypp", 0.0)),
+                "a_roll_ppm": float(a_s.get("roll_ppm", 0.0)),
+                "a_roll_turnovers": float(a_s.get("roll_turnovers", 0.0)),
+                "a_sos": float(a_sos_val),
             }
         ]
     )[FEATURE_COLS]
 
-    probabilities = model.predict_proba(input_data)[0]
-    away_win_prob = float(probabilities[0])
-    home_win_prob = float(probabilities[1])
+    if hasattr(model, "predict_proba"):
+        probabilities = model.predict_proba(input_data)[0]
+        away_win_prob = float(probabilities[0])
+        home_win_prob = float(probabilities[1])
+    else:
+        raw_pred = float(model.predict(input_data)[0])
+        home_win_prob = raw_pred
+        away_win_prob = 1.0 - raw_pred
+
+    # Ensure probabilities are bounded strictly between 0.0 and 1.0 (e.g. 0.65 = 65%)
+    home_win_prob = float(np.clip(home_win_prob, 0.0, 1.0))
+    away_win_prob = float(np.clip(away_win_prob, 0.0, 1.0))
 
     return {
         "home_team": h_team,
@@ -147,7 +148,7 @@ def predict_matchup(h_team, a_team, is_neutral, model, lookup_df):
     }
 
 
-def render_prediction_display(res, is_neutral):
+def render_prediction_display(res, is_neutral, lookup_df):
     c1, c2, c3 = st.columns(3)
 
     c1.metric(
@@ -180,67 +181,98 @@ st.title("🏈 NCAA Football Matchup Predictor")
 
 model = load_model()
 lookup_df = load_lookup_data()
-schedule, year, week = load_latest_schedule()
+stats_df = load_full_stats()
 
 if model is None or lookup_df is None:
-    st.error("❌ Missing required model or data files. Run `feature_engineering.py` and `train_model.py` first.")
+    st.error(
+        "❌ Missing required model or data files. Run `feature_engineering.py` and `train_model.py` first."
+    )
     st.stop()
 
-tab1, tab2 = st.tabs(["📅 Weekend Schedule", "⚔️ Custom Matchup Builder"])
+tab1, tab2 = st.tabs(["📅 Schedule Explorer", "⚔️ Custom Matchup Builder"])
 
-# TAB 1: WEEKEND GAMES SCHEDULE
+# TAB 1: SCHEDULE EXPLORER
 with tab1:
-    if schedule is None or schedule.empty:
+    if stats_df is None or stats_df.empty:
         st.warning("No schedule data found in `data/detailed_stats.csv`.")
     else:
-        st.subheader(f"Games for {year} - Week {week}")
+        st.subheader("Schedule Explorer")
 
-        # Precompute predictions for all scheduled games
-        game_list = []
-        for _, row in schedule.iterrows():
-            h, a, n = row["h_team"], row["a_team"], bool(row["neutral_site"])
-            pred = predict_matchup(h, a, n, model, lookup_df)
-            if pred:
-                label = f"{a} @ {h}" if not n else f"{a} vs {h} (Neutral)"
-                game_list.append({
-                    "Matchup": label,
-                    "Away Team": a,
-                    "Home Team": h,
-                    "Neutral": n,
-                    "Predicted Winner": pred["winner"],
-                    "Confidence": f"{pred['confidence']:.1%}",
-                    "Home Win %": f"{pred['home_prob']:.1%}",
-                    "Away Win %": f"{pred['away_prob']:.1%}",
-                })
+        available_years = sorted(stats_df["year"].unique(), reverse=True)
+        col_y, col_w = st.columns(2)
 
-        schedule_df = pd.DataFrame(game_list)
+        with col_y:
+            selected_year = st.selectbox("Select Season / Year", available_years, index=0)
 
-        selected_game_label = st.selectbox(
-            "👉 Select a game from this weekend to inspect stats:",
-            options=schedule_df["Matchup"].tolist(),
-            index=0,
-        )
+        year_filtered_df = stats_df[stats_df["year"] == selected_year]
+        available_weeks = sorted(year_filtered_df["week"].unique(), reverse=True)
 
-        st.markdown("---")
+        with col_w:
+            selected_week = st.selectbox("Select Week", available_weeks, index=0)
 
-        selected_row = schedule_df[schedule_df["Matchup"] == selected_game_label].iloc[0]
-        res = predict_matchup(
-            selected_row["Home Team"],
-            selected_row["Away Team"],
-            selected_row["Neutral"],
-            model,
-            lookup_df,
-        )
+        week_games = year_filtered_df[year_filtered_df["week"] == selected_week]
+        schedule = week_games[["h_team", "a_team", "neutral_site"]].drop_duplicates()
 
-        if res:
-            render_prediction_display(res, selected_row["Neutral"])
+        if schedule.empty:
+            st.warning(f"No games found for Year {selected_year}, Week {selected_week}.")
+        else:
+            game_list = []
+            for _, row in schedule.iterrows():
+                h, a, n = row["h_team"], row["a_team"], bool(row["neutral_site"])
+                pred = predict_matchup(h, a, n, model, lookup_df)
+                if pred:
+                    label = f"{a} @ {h}" if not n else f"{a} vs {h} (Neutral)"
+                    game_list.append(
+                        {
+                            "Matchup": label,
+                            "Away Team": a,
+                            "Home Team": h,
+                            "Neutral": n,
+                            "Predicted Winner": pred["winner"],
+                            "Confidence": f"{pred['confidence']:.1%}",
+                            "Home Win %": f"{pred['home_prob']:.1%}",
+                            "Away Win %": f"{pred['away_prob']:.1%}",
+                        }
+                    )
 
-        st.markdown("### 📋 Full Weekend Slate Overview")
-        st.dataframe(
-            schedule_df[["Matchup", "Predicted Winner", "Confidence", "Home Win %", "Away Win %"]],
-            use_container_width=True,
-            hide_index=True,
-        )
+            schedule_df = pd.DataFrame(game_list)
+
+            selected_game_label = st.selectbox(
+                "👉 Select a game to inspect predictions and stats:",
+                options=schedule_df["Matchup"].tolist(),
+                index=0,
+            )
+
+            st.markdown("---")
+
+            selected_row = schedule_df[
+                schedule_df["Matchup"] == selected_game_label
+            ].iloc[0]
+            res = predict_matchup(
+                selected_row["Home Team"],
+                selected_row["Away Team"],
+                selected_row["Neutral"],
+                model,
+                lookup_df,
+            )
+
+            if res:
+                render_prediction_display(res, selected_row["Neutral"], lookup_df)
+
+            st.markdown("### 📋 Week Overview")
+            st.dataframe(
+                schedule_df[
+                    [
+                        "Matchup",
+                        "Predicted Winner",
+                        "Confidence",
+                        "Home Win %",
+                        "Away Win %",
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
 
 # TAB 2: MANUAL CUSTOM MATCHUP
 with tab2:
@@ -252,7 +284,9 @@ with tab2:
         h_team = st.selectbox("Select Home Team", teams, index=0, key="custom_h")
     with col2:
         default_away = 1 if len(teams) > 1 else 0
-        a_team = st.selectbox("Select Away Team", teams, index=default_away, key="custom_a")
+        a_team = st.selectbox(
+            "Select Away Team", teams, index=default_away, key="custom_a"
+        )
 
     is_neutral = st.checkbox("Neutral Site Game", value=False, key="custom_n")
 
@@ -263,4 +297,4 @@ with tab2:
             res = predict_matchup(h_team, a_team, is_neutral, model, lookup_df)
             if res:
                 st.markdown("---")
-                render_prediction_display(res, is_neutral)
+                render_prediction_display(res, is_neutral, lookup_df)
