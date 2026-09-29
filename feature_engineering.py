@@ -161,6 +161,8 @@ def create_ml_features():
         "a_team",
         "home_win",
         "neutral_site",
+        "home_points",
+        "away_points",
         "h_roll_pts_scored",
         "h_roll_ypp",
         "h_roll_ppm",

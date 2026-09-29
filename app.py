@@ -145,12 +145,12 @@ def predict_matchup(h_team, a_team, is_neutral, model, lookup_df):
         ]
     )[FEATURE_COLS]
 
-    if hasattr(model, "predict_proba"):
-        probabilities = model.predict_proba(input_data)[0]
+    if hasattr(model["winner"], "predict_proba"):
+        probabilities = model["winner"].predict_proba(input_data)[0]
         away_win_prob = float(probabilities[0])
         home_win_prob = float(probabilities[1])
     else:
-        raw_pred = float(model.predict(input_data)[0])
+        raw_pred = float(model["winner"].predict(input_data)[0])
         home_win_prob = raw_pred
         away_win_prob = 1.0 - raw_pred
 
@@ -158,11 +158,16 @@ def predict_matchup(h_team, a_team, is_neutral, model, lookup_df):
     home_win_prob = float(np.clip(home_win_prob, 0.0, 1.0))
     away_win_prob = float(np.clip(away_win_prob, 0.0, 1.0))
 
+    h_score_pred = float(model["h_score"].predict(input_data)[0])
+    a_score_pred = float(model["a_score"].predict(input_data)[0])
+
     return {
         "home_team": h_team,
         "away_team": a_team,
         "home_prob": home_win_prob,
         "away_prob": away_win_prob,
+        "h_score": h_score_pred,
+        "a_score": a_score_pred,
         "winner": h_team if home_win_prob >= away_win_prob else a_team,
         "confidence": max(home_win_prob, away_win_prob),
     }
@@ -187,7 +192,8 @@ def render_prediction_display(res, is_neutral, lookup_df):
     )
 
     st.success(
-        f"### Predicted Winner: **{res['winner']}** ({res['confidence']:.1%} confidence)"
+        f"### Predicted Winner: **{res['winner']}** ({res['confidence']:.1%} confidence)\n"
+        f"### Predicted Score: **{res['home_team']} {res['h_score']:.1f} - {res['a_score']:.1f} {res['away_team']}**"
     )
 
     st.markdown("### 📊 Tale of the Tape")
