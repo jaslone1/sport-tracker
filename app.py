@@ -85,23 +85,29 @@ def get_tape_df(h_name, a_name, lookup_df):
         {
             "Metric": [
                 "Pts / Game (Rolling)",
+                "Yards / Game (Rolling)",
                 "Yards / Play",
                 "Pts / Minute",
                 "Turnovers / Game",
+                "Penalty Yards / Game (Rolling)",
                 "Opp. Def Strength (SOS)",
             ],
             f"🏠 {h_name}": [
                 f"{float(h_s.get('roll_pts_scored', 0.0)):.1f}",
+                f"{float(h_s.get('roll_yards', 0.0)):.1f}",
                 f"{float(h_s.get('roll_ypp', 0.0)):.2f}",
                 f"{float(h_s.get('roll_ppm', 0.0)):.2f}",
                 f"{float(h_s.get('roll_turnovers', 0.0)):.1f}",
+                f"{float(h_s.get('roll_pen_yds', 0.0)):.1f}",
                 f"{float(h_sos_val):.1f}",
             ],
             f"✈️ {a_name}": [
                 f"{float(a_s.get('roll_pts_scored', 0.0)):.1f}",
+                f"{float(a_s.get('roll_yards', 0.0)):.1f}",
                 f"{float(a_s.get('roll_ypp', 0.0)):.2f}",
                 f"{float(a_s.get('roll_ppm', 0.0)):.2f}",
                 f"{float(a_s.get('roll_turnovers', 0.0)):.1f}",
+                f"{float(a_s.get('roll_pen_yds', 0.0)):.1f}",
                 f"{float(a_sos_val):.1f}",
             ],
         }
