@@ -50,6 +50,7 @@ def simulate_matchup(h_name, a_name, neutral, weights=None):
 
     prob = model.predict_proba(input_df)[0][1]
     prob = float(np.clip(prob, 0.0, 1.0))
+    print(f"RAW PROBABILITY FOR {h_name} vs {a_name}: {prob}")
 
     if weights:
         ypp_gap = (h_stats.get('roll_ypp', 0) - a_stats.get('roll_ypp', 0)) * (weights['explosiveness'] - 1.0)
