@@ -14,6 +14,11 @@ def train_model():
 
     df = pd.read_csv(file_path)
 
+    # Exclude the most recent week to prevent data leakage
+    max_year = df["year"].max()
+    max_week = df[df["year"] == max_year]["week"].max()
+    df = df[~((df["year"] == max_year) & (df["week"] == max_week))]
+
     features = [
         "neutral_site",
         "h_roll_pts_scored",

@@ -120,8 +120,13 @@ def create_ml_features():
 
     perf_df["opp_def_strength"] = perf_df["roll_pts_allowed"]
 
-    # Save latest lookup data sorted by year AND week
-    latest_stats = perf_df.sort_values(["year", "week"]).groupby("team").tail(1)
+    # Identify max year and week to exclude current week from lookup
+    max_year = perf_df["year"].max()
+    max_week = perf_df[perf_df["year"] == max_year]["week"].max()
+    
+    # Save latest lookup data sorted by year AND week, excluding the current week
+    perf_df_filtered = perf_df[~((perf_df["year"] == max_year) & (perf_df["week"] == max_week))]
+    latest_stats = perf_df_filtered.sort_values(["year", "week"]).groupby("team").tail(1)
     os.makedirs("data", exist_ok=True)
     latest_stats.to_csv("data/team_lookup.csv", index=False)
 
