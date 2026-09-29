@@ -7,10 +7,9 @@ import streamlit as st
 st.set_page_config(
     page_title="NCAA Football Predictor",
     page_icon="🏈",
-    layout="centered",
+    layout="wide",
 )
 
-# Explicit feature list matching train_model.py exactly
 FEATURE_COLS = [
     "neutral_site",
     "h_roll_pts_scored",
@@ -42,6 +41,27 @@ def load_lookup_data():
     return pd.read_csv(lookup_path)
 
 
+@st.cache_data
+def load_latest_schedule():
+    stats_path = "data/detailed_stats.csv"
+    if not os.path.exists(stats_path):
+        return None, None, None
+
+    df = pd.read_csv(stats_path, sep=None, engine="python", encoding="utf-8-sig")
+    df.columns = df.columns.str.strip()
+
+    if "neutral_site" not in df.columns:
+        df["neutral_site"] = 0
+
+    latest_year = df["year"].max()
+    latest_week = df[df["year"] == latest_year]["week"].max()
+
+    week_games = df[(df["year"] == latest_year) & (df["week"] == latest_week)]
+    schedule = week_games[["h_team", "a_team", "neutral_site"]].drop_duplicates()
+
+    return schedule, latest_year, latest_week
+
+
 def get_tape_df(h_name, a_name, lookup_df):
     h_s = lookup_df[lookup_df["team"] == h_name]
     a_s = lookup_df[lookup_df["team"] == a_name]
@@ -52,7 +72,6 @@ def get_tape_df(h_name, a_name, lookup_df):
     h_s = h_s.iloc[0]
     a_s = a_s.iloc[0]
 
-    # Safe lookup for SOS/Opponent Defense Strength
     h_sos_val = h_s.get("opp_def_strength", h_s.get("roll_pts_allowed", 0.0))
     a_sos_val = a_s.get("opp_def_strength", a_s.get("roll_pts_allowed", 0.0))
 
@@ -114,7 +133,6 @@ def predict_matchup(h_team, a_team, is_neutral, model, lookup_df):
         ]
     )[FEATURE_COLS]
 
-    # Use predict_proba to obtain soft probabilities instead of hard classification labels
     probabilities = model.predict_proba(input_data)[0]
     away_win_prob = float(probabilities[0])
     home_win_prob = float(probabilities[1])
@@ -129,71 +147,120 @@ def predict_matchup(h_team, a_team, is_neutral, model, lookup_df):
     }
 
 
-# 2. Main UI Layout
+def render_prediction_display(res, is_neutral):
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric(
+        label=f"🏠 {res['home_team']}",
+        value=f"{res['home_prob']:.1%}",
+        delta="Home" if not is_neutral else "Neutral",
+    )
+    c2.markdown(
+        "<h3 style='text-align: center; margin-top: 15px;'>VS</h3>",
+        unsafe_allow_html=True,
+    )
+    c3.metric(
+        label=f"✈️ {res['away_team']}",
+        value=f"{res['away_prob']:.1%}",
+        delta="Away",
+    )
+
+    st.success(
+        f"### Predicted Winner: **{res['winner']}** ({res['confidence']:.1%} confidence)"
+    )
+
+    st.markdown("### 📊 Tale of the Tape")
+    tape_df = get_tape_df(res["home_team"], res["away_team"], lookup_df)
+    if not tape_df.empty:
+        st.table(tape_df)
+
+
+# --- UI Setup ---
 st.title("🏈 NCAA Football Matchup Predictor")
-st.write("Predict game outcomes and win probabilities based on recent rolling team statistics.")
 
 model = load_model()
 lookup_df = load_lookup_data()
+schedule, year, week = load_latest_schedule()
 
-if model is None:
-    st.error(
-        "❌ Model file `models/ncaa_model.pkl` not found. Please run `python train_model.py` first."
-    )
+if model is None or lookup_df is None:
+    st.error("❌ Missing required model or data files. Run `feature_engineering.py` and `train_model.py` first.")
     st.stop()
 
-if lookup_df is None or lookup_df.empty:
-    st.error(
-        "❌ Team lookup data `data/team_lookup.csv` not found. Please run `python feature_engineering.py` first."
-    )
-    st.stop()
+tab1, tab2 = st.tabs(["📅 Weekend Schedule", "⚔️ Custom Matchup Builder"])
 
-teams = sorted(lookup_df["team"].dropna().unique())
+# TAB 1: WEEKEND GAMES SCHEDULE
+with tab1:
+    if schedule is None or schedule.empty:
+        st.warning("No schedule data found in `data/detailed_stats.csv`.")
+    else:
+        st.subheader(f"Games for {year} - Week {week}")
 
-st.markdown("### Matchup Selection")
-col1, col2 = st.columns(2)
+        # Precompute predictions for all scheduled games
+        game_list = []
+        for _, row in schedule.iterrows():
+            h, a, n = row["h_team"], row["a_team"], bool(row["neutral_site"])
+            pred = predict_matchup(h, a, n, model, lookup_df)
+            if pred:
+                label = f"{a} @ {h}" if not n else f"{a} vs {h} (Neutral)"
+                game_list.append({
+                    "Matchup": label,
+                    "Away Team": a,
+                    "Home Team": h,
+                    "Neutral": n,
+                    "Predicted Winner": pred["winner"],
+                    "Confidence": f"{pred['confidence']:.1%}",
+                    "Home Win %": f"{pred['home_prob']:.1%}",
+                    "Away Win %": f"{pred['away_prob']:.1%}",
+                })
 
-with col1:
-    h_team = st.selectbox("Select Home Team", teams, index=0)
+        schedule_df = pd.DataFrame(game_list)
 
-with col2:
-    default_away_idx = 1 if len(teams) > 1 else 0
-    a_team = st.selectbox("Select Away Team", teams, index=default_away_idx)
+        selected_game_label = st.selectbox(
+            "👉 Select a game from this weekend to inspect stats:",
+            options=schedule_df["Matchup"].tolist(),
+            index=0,
+        )
 
-is_neutral = st.checkbox("Neutral Site Game", value=False)
+        st.markdown("---")
 
-if h_team == a_team:
-    st.warning("⚠️ Please select two different teams for a matchup.")
-else:
-    if st.button("🚀 Predict Matchup", use_container_width=True):
-        res = predict_matchup(h_team, a_team, is_neutral, model, lookup_df)
+        selected_row = schedule_df[schedule_df["Matchup"] == selected_game_label].iloc[0]
+        res = predict_matchup(
+            selected_row["Home Team"],
+            selected_row["Away Team"],
+            selected_row["Neutral"],
+            model,
+            lookup_df,
+        )
 
         if res:
-            st.markdown("---")
-            c1, c2, c3 = st.columns(3)
+            render_prediction_display(res, selected_row["Neutral"])
 
-            c1.metric(
-                label=f"🏠 {res['home_team']}",
-                value=f"{res['home_prob']:.1%}",
-                delta="Home" if not is_neutral else "Neutral",
-            )
-            c2.markdown(
-                "<h3 style='text-align: center; margin-top: 15px;'>VS</h3>",
-                unsafe_allow_html=True,
-            )
-            c3.metric(
-                label=f"✈️ {res['away_team']}",
-                value=f"{res['away_prob']:.1%}",
-                delta="Away",
-            )
+        st.markdown("### 📋 Full Weekend Slate Overview")
+        st.dataframe(
+            schedule_df[["Matchup", "Predicted Winner", "Confidence", "Home Win %", "Away Win %"]],
+            use_container_width=True,
+            hide_index=True,
+        )
 
-            st.success(
-                f"### Predicted Winner: **{res['winner']}** ({res['confidence']:.1%} confidence)"
-            )
+# TAB 2: MANUAL CUSTOM MATCHUP
+with tab2:
+    st.subheader("Custom Matchup")
+    teams = sorted(lookup_df["team"].dropna().unique())
 
-            st.markdown("### 📊 Tale of the Tape")
-            tape_df = get_tape_df(h_team, a_team, lookup_df)
-            if not tape_df.empty:
-                st.table(tape_df)
-        else:
-            st.error("❌ Could not generate prediction. Check that team data exists.")
+    col1, col2 = st.columns(2)
+    with col1:
+        h_team = st.selectbox("Select Home Team", teams, index=0, key="custom_h")
+    with col2:
+        default_away = 1 if len(teams) > 1 else 0
+        a_team = st.selectbox("Select Away Team", teams, index=default_away, key="custom_a")
+
+    is_neutral = st.checkbox("Neutral Site Game", value=False, key="custom_n")
+
+    if h_team == a_team:
+        st.warning("⚠️ Please select two different teams.")
+    else:
+        if st.button("🚀 Predict Custom Matchup", use_container_width=True):
+            res = predict_matchup(h_team, a_team, is_neutral, model, lookup_df)
+            if res:
+                st.markdown("---")
+                render_prediction_display(res, is_neutral)
