@@ -320,29 +320,29 @@ def render_prediction_display(res, h_team, a_team, lookup_df):
             unsafe_allow_html=True,
         )
 
-        # Key Advantage Summary (Explaining Outcome)
-        st.markdown("### Key Matchup Drivers")
-        h_s = lookup_df[lookup_df["team"] == h_team].iloc[0] if not lookup_df[
-            lookup_df["team"] == h_team].empty else None
-        a_s = lookup_df[lookup_df["team"] == a_team].iloc[0] if not lookup_df[
-            lookup_df["team"] == a_team].empty else None
+    # Key Advantage Summary (Explaining Outcome)
+    st.markdown("### Key Matchup Drivers")
+    h_s = lookup_df[lookup_df["team"] == h_team].iloc[0] if not lookup_df[
+        lookup_df["team"] == h_team].empty else None
+    a_s = lookup_df[lookup_df["team"] == a_team].iloc[0] if not lookup_df[
+        lookup_df["team"] == a_team].empty else None
 
-        if h_s is not None and a_s is not None:
-            ypp_diff = float(h_s.get("roll_ypp", 0.0)) - float(a_s.get("roll_ypp", 0.0))
-            to_diff = float(h_s.get("roll_turnovers", 0.0)) - float(a_s.get("roll_turnovers", 0.0))
-            sos_diff = float(h_s.get("opp_def_strength", 0.0)) - float(a_s.get("opp_def_strength", 0.0))
+    if h_s is not None and a_s is not None:
+        ypp_diff = float(h_s.get("roll_ypp", 0.0)) - float(a_s.get("roll_ypp", 0.0))
+        to_diff = float(h_s.get("roll_turnovers", 0.0)) - float(a_s.get("roll_turnovers", 0.0))
+        sos_diff = float(h_s.get("opp_def_strength", 0.0)) - float(a_s.get("opp_def_strength", 0.0))
 
-            e_col1, e_col2, e_col3 = st.columns(3)
-            with e_col1:
-                edge = f"{h_team} (+{abs(ypp_diff):.2f} YPP)" if ypp_diff > 0 else f"{a_team} (+{abs(ypp_diff):.2f} YPP)"
-                st.info(f"**Yards / Play Edge:**\n\n{edge}")
-            with e_col2:
-                # Lower turnovers is better
-                edge = f"{h_team} ({abs(to_diff):.1f} fewer TO/gm)" if to_diff < 0 else f"{a_team} ({abs(to_diff):.1f} fewer TO/gm)"
-                st.info(f"**Turnover Advantage:**\n\n{edge}")
-            with e_col3:
-                edge = f"{h_team} (+{abs(sos_diff):.1f} SOS)" if sos_diff > 0 else f"{a_team} (+{abs(sos_diff):.1f} SOS)"
-                st.info(f"**Schedule Strength Edge:**\n\n{edge}")
+        e_col1, e_col2, e_col3 = st.columns(3)
+        with e_col1:
+            edge = f"{h_team} (+{abs(ypp_diff):.2f} YPP)" if ypp_diff > 0 else f"{a_team} (+{abs(ypp_diff):.2f} YPP)"
+            st.info(f"**Yards / Play Edge:**\n\n{edge}")
+        with e_col2:
+            # Lower turnovers is better
+            edge = f"{h_team} ({abs(to_diff):.1f} fewer TO/gm)" if to_diff < 0 else f"{a_team} ({abs(to_diff):.1f} fewer TO/gm)"
+            st.info(f"**Turnover Advantage:**\n\n{edge}")
+        with e_col3:
+            edge = f"{h_team} (+{abs(sos_diff):.1f} SOS)" if sos_diff > 0 else f"{a_team} (+{abs(sos_diff):.1f} SOS)"
+            st.info(f"**Schedule Strength Edge:**\n\n{edge}")
 
     st.markdown("### Matchup Tale of the Tape")
     tape_df = get_tape_df(h_team, a_team, lookup_df)
