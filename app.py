@@ -31,14 +31,15 @@ st.markdown(
         color: #f8fafc;
         margin-bottom: 4px;
     }
-    .metric-prob {
-        font-size: 2rem;
+    .metric-score-large {
+        font-size: 2.2rem;
         font-weight: 800;
         color: #38bdf8;
     }
-    .metric-score {
+    .metric-prob {
         font-size: 1.1rem;
         color: #cbd5e1;
+        margin-top: 4px;
     }
     .vs-divider {
         font-size: 1.8rem;
@@ -299,8 +300,8 @@ def render_prediction_display(res, h_team, a_team, lookup_df):
             f"""
             <div class="metric-card">
                 <div class="metric-team">🏠 {h_team}</div>
-                <div class="metric-prob">{res['home_win_prob']:.1%}</div>
-                <div class="metric-score">Projected Score: <b>{home_score:.1f}</b></div>
+                <div class="metric-score-large">{home_score:.1f}</div>
+                <div class="metric-prob">Win Prob: <b>{res['home_win_prob']:.1%}</b></div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -312,8 +313,8 @@ def render_prediction_display(res, h_team, a_team, lookup_df):
             f"""
             <div class="metric-card">
                 <div class="metric-team">✈️ {a_team}</div>
-                <div class="metric-prob">{res['away_win_prob']:.1%}</div>
-                <div class="metric-score">Projected Score: <b>{away_score:.1f}</b></div>
+                <div class="metric-score-large">{away_score:.1f}</div>
+                <div class="metric-prob">Win Prob: <b>{res['away_win_prob']:.1%}</b></div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -340,8 +341,6 @@ def get_all_predictions(df, lookup_df):
                     "Predicted Winner": "TBD",
                     "Win Prob": "TBD",
                     "Proj. Score": "TBD",
-                    "Home Win %": "TBD",
-                    "Away Win %": "TBD",
                 }
             )
             continue
@@ -355,8 +354,6 @@ def get_all_predictions(df, lookup_df):
                 "Predicted Winner": winner,
                 "Win Prob": f"{win_prob:.1%}",
                 "Proj. Score": proj_score,
-                "Home Win %": f"{res['home_win_prob']:.1%}",
-                "Away Win %": f"{res['away_win_prob']:.1%}",
             }
         )
     return pd.DataFrame(predictions, index=df.index)
@@ -390,7 +387,7 @@ if not schedule_df.empty:
     div_options = ["All"]
     if isinstance(all_divisions, list):
         div_options.extend(all_divisions)
-    
+
     div_index = 0
     if default_div in div_options:
         div_index = div_options.index(default_div)
@@ -442,8 +439,6 @@ if not schedule_df.empty:
                 "Predicted Winner",
                 "Win Prob",
                 "Proj. Score",
-                "Home Win %",
-                "Away Win %",
             ]
         ],
         use_container_width=True,
