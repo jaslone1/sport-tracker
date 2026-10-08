@@ -70,21 +70,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-FEATURE_COLS = [
-    "neutral_site",
-    "h_roll_pts_scored",
-    "h_roll_ypp",
-    "h_roll_ppm",
-    "h_roll_turnovers",
-    "h_sos",
-    "a_roll_pts_scored",
-    "a_roll_ypp",
-    "a_roll_ppm",
-    "a_roll_turnovers",
-    "a_sos",
-]
-
-
 # -----------------------------------------------------------------------------
 # 2. Data & Model Loaders
 # -----------------------------------------------------------------------------
@@ -220,7 +205,24 @@ def predict_matchup(h_team, a_team, is_neutral, model, lookup_df):
                 "a_sos": float(a_sos_val),
             }
         ]
-    )[FEATURE_COLS]
+    )
+
+    # Calculate differential features if they exist in the model's feature list
+    if isinstance(model, dict) and "features" in model:
+        features = model["features"]
+        if "diff_pts_scored" in features:
+            input_data["diff_pts_scored"] = input_data["h_roll_pts_scored"] - input_data["a_roll_pts_scored"]
+        if "diff_ypp" in features:
+            input_data["diff_ypp"] = input_data["h_roll_ypp"] - input_data["a_roll_ypp"]
+        if "diff_ppm" in features:
+            input_data["diff_ppm"] = input_data["h_roll_ppm"] - input_data["a_roll_ppm"]
+        if "diff_turnovers" in features:
+            input_data["diff_turnovers"] = input_data["h_roll_turnovers"] - input_data["a_roll_turnovers"]
+        if "diff_sos" in features:
+            input_data["diff_sos"] = input_data["h_sos"] - input_data["a_sos"]
+        
+        # Ensure we only keep the features the model was trained with
+        input_data = input_data[features]
 
     # Handle dictionary model output vs single classifier
     if isinstance(model, dict):
