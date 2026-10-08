@@ -1,8 +1,13 @@
 import os
 import joblib
-import numpy as np
 import pandas as pd
-import numpy as np
+import streamlit as st
+
+st.set_page_config(
+    page_title="NCAA Football Predictor",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 st.markdown(
     """
@@ -150,23 +155,51 @@ def get_tape_df(h_name, a_name, lookup_df):
     h_s = h_s.iloc[0]
     a_s = a_s.iloc[0]
 
-    return pd.DataFrame({
-        "Metric": ["Pts/Game", "Yards/Play", "Pts/Minute", "Turnovers", "SOS"],
-        h_name: [
-            f"{h_s['roll_pts_scored']:.1f}",
-            f"{h_s['roll_ypp']:.2f}",
-            f"{h_s['roll_ppm']:.2f}",
-            f"{h_s['roll_turnovers']:.1f}",
-            f"{h_s['opp_def_strength']:.1f}"
-        ],
-        a_name: [
-            f"{a_s['roll_pts_scored']:.1f}",
-            f"{a_s['roll_ypp']:.2f}",
-            f"{a_s['roll_ppm']:.2f}",
-            f"{a_s['roll_turnovers']:.1f}",
-            f"{a_s['opp_def_strength']:.1f}"
-        ]
-    })
+    h_sos_val = h_s.get("opp_def_strength", h_s.get("roll_pts_allowed", 0.0))
+    a_sos_val = a_s.get("opp_def_strength", a_s.get("roll_pts_allowed", 0.0))
+
+    return pd.DataFrame(
+        {
+            "Metric": [
+                "Pts / Game (Rolling)",
+                "Yards / Game (Rolling)",
+                "Yards / Play",
+                "Pts / Minute",
+                "Turnovers / Game",
+                "Penalty Yards / Game (Rolling)",
+                "Opp. Def Strength (SOS)",
+            ],
+            f"{h_name}": [
+                f"{float(h_s.get('roll_pts_scored', 0.0)):.1f}",
+                f"{float(h_s.get('roll_yards', 0.0)):.1f}",
+                f"{float(h_s.get('roll_ypp', 0.0)):.2f}",
+                f"{float(h_s.get('roll_ppm', 0.0)):.2f}",
+                f"{float(h_s.get('roll_turnovers', 0.0)):.1f}",
+                f"{float(h_s.get('roll_pen_yds', 0.0)):.1f}",
+                f"{float(h_sos_val):.1f}",
+            ],
+            f"✈{a_name}": [
+                f"{float(a_s.get('roll_pts_scored', 0.0)):.1f}",
+                f"{float(a_s.get('roll_yards', 0.0)):.1f}",
+                f"{float(a_s.get('roll_ypp', 0.0)):.2f}",
+                f"{float(a_s.get('roll_ppm', 0.0)):.2f}",
+                f"{float(a_s.get('roll_turnovers', 0.0)):.1f}",
+                f"{float(a_s.get('roll_pen_yds', 0.0)):.1f}",
+                f"{float(a_sos_val):.1f}",
+            ],
+        }
+    )
+
+
+def predict_matchup(h_team, a_team, is_neutral, model, lookup_df):
+    h_s = lookup_df[lookup_df["team"] == h_team]
+    a_s = lookup_df[lookup_df["team"] == a_team]
+
+    if h_s.empty or a_s.empty:
+        return None
+
+    h_s = h_s.iloc[0]
+    a_s = a_s.iloc[0]
 
     h_sos_val = h_s.get("opp_def_strength", h_s.get("roll_pts_allowed", 0.0))
     a_sos_val = a_s.get("opp_def_strength", a_s.get("roll_pts_allowed", 0.0))
@@ -192,80 +225,76 @@ def get_tape_df(h_name, a_name, lookup_df):
     # Handle dictionary model output vs single classifier
     if isinstance(model, dict):
         winner_model = model["winner"]
-        h_score_model = model.get("h_score")
-        a_score_model = model.get("a_score")
     else:
         winner_model = model
-        h_score_model = None
-        a_score_model = None
 
     if hasattr(winner_model, "predict_proba"):
         probabilities = winner_model.predict_proba(input_data)[0]
-        away_win_prob = float(probabilities[0])
-        home_win_prob = float(probabilities[1])
-    else:
-        st.error("❌ Could not generate predictions. Check that team names from the schedule match training data.")
+        return {
+            "away_win_prob": float(probabilities[0]),
+            "home_win_prob": float(probabilities[1]),
+        }
+    return None
+
+
+def render_prediction_display(res, h_team, a_team, lookup_df):
+    st.subheader("Prediction Results")
+    st.write(f"Home win probability: {res['home_win_prob']:.2%}")
+    st.write(f"Away win probability: {res['away_win_prob']:.2%}")
+    
+    st.subheader("Matchup Stats Comparison")
+    tape_df = get_tape_df(h_team, a_team, lookup_df)
+    if not tape_df.empty:
+        st.table(tape_df)
+
+# Load Data
+model = load_model()
+lookup_df = load_lookup_data()
+schedule_df = load_scheduled_games()
 
 st.divider()
 st.markdown("**How it works:** The model is trained on rolling 3-game averages from the last 3 seasons plus the current season so far, then used to predict all scheduled FBS games this week.")
 
-        st.markdown("---")
-        st.markdown("### 📋 Full Week Matchup Overview")
+st.markdown("---")
+st.markdown("### Full Week Matchup Overview")
 
-        # Interactive Data Table with Selection Support
-        event = st.dataframe(
-            schedule_df[
-                [
-                    "Matchup",
-                    "Predicted Winner",
-                    "Win Prob",
-                    "Proj. Score",
-                    "Home Win %",
-                    "Away Win %",
-                ]
-            ],
-            use_container_width=True,
-            hide_index=True,
-            selection_mode="single-row",
-            on_select="rerun",
-            key="games_table",
-        )
+# Interactive Data Table with Selection Support
+schedule_df["Matchup"] = schedule_df["a_team"] + " @ " + schedule_df["h_team"]
+schedule_df["Predicted Winner"] = "TBD" # Placeholder
+schedule_df["Win Prob"] = "TBD" # Placeholder
+schedule_df["Proj. Score"] = "TBD" # Placeholder
+schedule_df["Home Win %"] = "TBD" # Placeholder
+schedule_df["Away Win %"] = "TBD" # Placeholder
 
-        # Sync table click with view details if row selected
-        if event and hasattr(event, "selection") and event.selection:
-            selected_rows = event.selection.get("rows", [])
-            if selected_rows:
-                clicked_game = schedule_df.iloc[selected_rows[0]]["Matchup"]
-                if clicked_game != selected_game_label:
-                    st.info(f"Selected: **{clicked_game}**")
+event = st.dataframe(
+    schedule_df[
+        [
+            "Matchup",
+            "Predicted Winner",
+            "Win Prob",
+            "Proj. Score",
+            "Home Win %",
+            "Away Win %",
+        ]
+    ],
+    use_container_width=True,
+    hide_index=True,
+    selection_mode="single-row",
+    on_select="rerun",
+    key="games_table",
+)
 
-# -----------------------------------------------------------------------------
-# TAB 2: MANUAL CUSTOM MATCHUP BUILDER
-# -----------------------------------------------------------------------------
-with tab2:
-    st.subheader("Custom Matchup Simulator")
-    st.write(
-        "Simulate any custom matchup using current rolling team stats and home field advantage."
-    )
-
-    teams = sorted(lookup_df["team"].dropna().unique())
-
-    col1, col2 = st.columns(2)
-    with col1:
-        h_team = st.selectbox("Home Team", teams, index=0, key="custom_h")
-    with col2:
-        default_away = 1 if len(teams) > 1 else 0
-        a_team = st.selectbox(
-            "Away Team", teams, index=default_away, key="custom_a"
-        )
-
-    is_neutral = st.checkbox("Neutral Site Game", value=False, key="custom_n")
-
-    if h_team == a_team:
-        st.warning("⚠️ Please select two different teams.")
-    else:
-        if st.button("🚀 Predict Custom Matchup", use_container_width=True):
-            res = predict_matchup(h_team, a_team, is_neutral, model, lookup_df)
-            if res:
-                st.markdown("---")
-                render_prediction_display(res, is_neutral, lookup_df)
+# Sync table click with view details if row selected
+if event and hasattr(event, "selection") and event.selection:
+    selected_rows = event.selection.get("rows", [])
+    if selected_rows:
+        row = schedule_df.iloc[selected_rows[0]]
+        h_team = row["h_team"]
+        a_team = row["a_team"]
+        st.info(f"Selected: **{a_team} @ {h_team}**")
+        
+        # Predict and render
+        is_neutral = False # Assuming False for scheduled games in table
+        prediction = predict_matchup(h_team, a_team, is_neutral, model, lookup_df)
+        if prediction:
+            render_prediction_display(prediction, h_team, a_team, lookup_df)
