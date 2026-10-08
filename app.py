@@ -169,7 +169,7 @@ def get_tape_df(h_name, a_name, lookup_df):
                 f"{float(h_s.get('roll_pen_yds', 0.0)):.1f}",
                 f"{float(h_sos_val):.1f}",
             ],
-            f"✈{a_name}": [
+            f"{a_name}": [
                 f"{float(a_s.get('roll_pts_scored', 0.0)):.1f}",
                 f"{float(a_s.get('roll_yards', 0.0)):.1f}",
                 f"{float(a_s.get('roll_ypp', 0.0)):.2f}",
