@@ -312,7 +312,7 @@ def render_prediction_display(res, h_team, a_team, lookup_df):
         st.markdown(
             f"""
             <div class="metric-card">
-                <div class="metric-team">✈ {a_team}</div>
+                <div class="metric-team">{a_team}</div>
                 <div class="metric-score-large">{away_score:.1f}</div>
                 <div class="metric-prob">Probability: <b>{res['away_win_prob']:.1%}</b></div>
             </div>
