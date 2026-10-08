@@ -225,22 +225,33 @@ def predict_matchup(h_team, a_team, is_neutral, model, lookup_df):
     # Handle dictionary model output vs single classifier
     if isinstance(model, dict):
         winner_model = model["winner"]
+        h_score_model = model.get("h_score")
+        a_score_model = model.get("a_score")
     else:
         winner_model = model
+        h_score_model = None
+        a_score_model = None
 
+    result = {}
     if hasattr(winner_model, "predict_proba"):
         probabilities = winner_model.predict_proba(input_data)[0]
-        return {
-            "away_win_prob": float(probabilities[0]),
-            "home_win_prob": float(probabilities[1]),
-        }
-    return None
+        result["away_win_prob"] = float(probabilities[0])
+        result["home_win_prob"] = float(probabilities[1])
+    
+    if h_score_model and a_score_model:
+        result["home_score"] = float(h_score_model.predict(input_data)[0])
+        result["away_score"] = float(a_score_model.predict(input_data)[0])
+        
+    return result
 
 
 def render_prediction_display(res, h_team, a_team, lookup_df):
     st.subheader("Prediction Results")
     st.write(f"Home win probability: {res['home_win_prob']:.2%}")
     st.write(f"Away win probability: {res['away_win_prob']:.2%}")
+    
+    if "home_score" in res and "away_score" in res:
+        st.write(f"### Projected Score: {h_team} {res['home_score']:.1f} - {a_team} {res['away_score']:.1f}")
     
     st.subheader("Matchup Stats Comparison")
     tape_df = get_tape_df(h_team, a_team, lookup_df)
@@ -252,8 +263,26 @@ model = load_model()
 lookup_df = load_lookup_data()
 schedule_df = load_scheduled_games()
 
+# Filters
+st.sidebar.markdown("### Filters")
+all_divisions = sorted(list(set(schedule_df["home_classification"].dropna().unique()) | set(schedule_df["away_classification"].dropna().unique())))
+default_div = "fbs" if "fbs" in all_divisions else (all_divisions[0] if all_divisions else None)
+selected_division = st.sidebar.selectbox("Division", ["All"] + all_divisions, index=(["All"] + all_divisions).index(default_div) if default_div in (["All"] + all_divisions) else 0)
+
+filtered_df = schedule_df
+if selected_division != "All":
+    filtered_df = schedule_df[(schedule_df["home_classification"] == selected_division) | (schedule_df["away_classification"] == selected_division)]
+
+all_conferences = sorted(list(set(filtered_df["home_conference"].dropna().unique()) | set(filtered_df["away_conference"].dropna().unique())))
+selected_conference = st.sidebar.selectbox("Conference", ["All"] + all_conferences)
+
+if selected_conference != "All":
+    filtered_df = filtered_df[(filtered_df["home_conference"] == selected_conference) | (filtered_df["away_conference"] == selected_conference)]
+
+schedule_df = filtered_df
+
 st.divider()
-st.markdown("**How it works:** The model is trained on rolling 3-game averages from the last 3 seasons plus the current season so far, then used to predict all scheduled FBS games this week.")
+st.markdown(f"**How it works:** The model is trained on rolling 3-game averages from the last 3 seasons plus the current season so far, then used to predict all scheduled {selected_division.upper()} games this week.")
 
 st.markdown("---")
 st.markdown("### Full Week Matchup Overview")

@@ -108,6 +108,10 @@ def fetch_scheduled_fbs_games():
                 'week': game.get('week'),
                 'home_team': game.get('homeTeam'),
                 'away_team': game.get('awayTeam'),
+                'home_classification': game.get('homeClassification'),
+                'away_classification': game.get('awayClassification'),
+                'home_conference': game.get('homeConference'),
+                'away_conference': game.get('awayConference'),
                 'neutral_site': 1 if game.get('neutralSite') else 0,
                 'start_date': game.get('startDate')
             })
@@ -124,6 +128,4 @@ def fetch_scheduled_fbs_games():
 
 
 if __name__ == "__main__":
-    fetch_and_merge()
-    time.sleep(1)
     fetch_scheduled_fbs_games()
