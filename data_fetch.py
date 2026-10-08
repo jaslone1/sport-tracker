@@ -6,7 +6,7 @@ from datetime import datetime
 
 CFB_API_KEY = "3yZC6fPALRy4yRPtRMjghq/Mmrpe+R7FvMDYWae+7NqbMON8tH40idSddmQ+Yc/N"
 HEADERS = {"Authorization": f"Bearer {CFB_API_KEY}"}
-YEARS = [2022, 2023, 2024, 2025]
+YEARS = [2022, 2023, 2024, 2025, 2026]
 
 
 def fetch_and_merge():
