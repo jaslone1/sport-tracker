@@ -260,7 +260,8 @@ def render_prediction_display(res, h_team, a_team, lookup_df):
 
 
 @st.cache_data
-def get_all_predictions(df, model, lookup_df):
+def get_all_predictions(df, lookup_df):
+    model = load_model()
     predictions = []
     for _, row in df.iterrows():
         h_team = row['h_team']
@@ -331,7 +332,7 @@ st.markdown("### Full Week Matchup Overview")
 schedule_df["Matchup"] = schedule_df["a_team"] + " @ " + schedule_df["h_team"]
 
 # Calculate predictions
-pred_df = get_all_predictions(schedule_df, model, lookup_df)
+pred_df = get_all_predictions(schedule_df, lookup_df)
 schedule_df = pd.concat([schedule_df, pred_df], axis=1)
 
 event = st.dataframe(
