@@ -160,7 +160,7 @@ def get_tape_df(h_name, a_name, lookup_df):
                 "Penalty Yards / Game (Rolling)",
                 "Opp. Def Strength (SOS)",
             ],
-            f"🏠 {h_name}": [
+            f"{h_name}": [
                 f"{float(h_s.get('roll_pts_scored', 0.0)):.1f}",
                 f"{float(h_s.get('roll_yards', 0.0)):.1f}",
                 f"{float(h_s.get('roll_ypp', 0.0)):.2f}",
@@ -169,7 +169,7 @@ def get_tape_df(h_name, a_name, lookup_df):
                 f"{float(h_s.get('roll_pen_yds', 0.0)):.1f}",
                 f"{float(h_sos_val):.1f}",
             ],
-            f"✈️ {a_name}": [
+            f"✈{a_name}": [
                 f"{float(a_s.get('roll_pts_scored', 0.0)):.1f}",
                 f"{float(a_s.get('roll_yards', 0.0)):.1f}",
                 f"{float(a_s.get('roll_ypp', 0.0)):.2f}",
@@ -416,7 +416,7 @@ if not schedule_df.empty:
 
     schedule_df = filtered_df
 
-st.title("🏈 NCAA Football Game Predictor")
+st.title("NCAA Football Game Predictor")
 st.markdown(
     "**How it works:** The engine predicts game spread and total points, then calculates "
     "a win probability calibrated directly to the predicted scoreline."
