@@ -287,7 +287,7 @@ def render_prediction_display(res, h_team, a_team, lookup_df):
         f"""
         <div class="winner-banner">
             <div class="winner-title">🏆 Projected Winner: {favored_team} ({favored_prob:.1%} Win Prob)</div>
-            <div class="winner-subtitle">Projected Scoreline: {h_team} {home_score:.1f} — {away_team if 'away_team' in locals() else a_team} {away_score:.1f} (Margin: {spread:.1f} pts)</div>
+            <div class="winner-subtitle">Projected Scoreline: {h_team} {home_score:.1f} — {a_team} {away_score:.1f} (Margin: {spread:.1f} pts)</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -387,8 +387,13 @@ if not schedule_df.empty:
         )
     )
     default_div = "fbs" if "fbs" in all_divisions else (all_divisions[0] if all_divisions else None)
-    div_options = ["All"] + all_divisions
-    div_index = div_options.index(default_div) if default_div in div_options else 0
+    div_options = ["All"]
+    if isinstance(all_divisions, list):
+        div_options.extend(all_divisions)
+    
+    div_index = 0
+    if default_div in div_options:
+        div_index = div_options.index(default_div)
     selected_division = st.sidebar.selectbox("Division", div_options, index=div_index)
 
     if selected_division != "All":
