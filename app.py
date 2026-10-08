@@ -287,7 +287,7 @@ def render_prediction_display(res, h_team, a_team, lookup_df):
     st.markdown(
         f"""
         <div class="winner-banner">
-            <div class="winner-title">🏆 Projected Winner: {favored_team} ({favored_prob:.1%} Win Prob)</div>
+            <div class="winner-title"> Projected Winner: {favored_team} ({favored_prob:.1%} Win Prob)</div>
             <div class="winner-subtitle">Projected Scoreline: {h_team} {home_score:.1f} — {a_team} {away_score:.1f} (Margin: {spread:.1f} pts)</div>
         </div>
         """,
@@ -299,9 +299,9 @@ def render_prediction_display(res, h_team, a_team, lookup_df):
         st.markdown(
             f"""
             <div class="metric-card">
-                <div class="metric-team">🏠 {h_team}</div>
+                <div class="metric-team"> {h_team}</div>
                 <div class="metric-score-large">{home_score:.1f}</div>
-                <div class="metric-prob">Win Prob: <b>{res['home_win_prob']:.1%}</b></div>
+                <div class="metric-prob">Probability: <b>{res['home_win_prob']:.1%}</b></div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -312,9 +312,9 @@ def render_prediction_display(res, h_team, a_team, lookup_df):
         st.markdown(
             f"""
             <div class="metric-card">
-                <div class="metric-team">✈️ {a_team}</div>
+                <div class="metric-team">✈ {a_team}</div>
                 <div class="metric-score-large">{away_score:.1f}</div>
-                <div class="metric-prob">Win Prob: <b>{res['away_win_prob']:.1%}</b></div>
+                <div class="metric-prob">Probability: <b>{res['away_win_prob']:.1%}</b></div>
             </div>
             """,
             unsafe_allow_html=True,
