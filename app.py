@@ -1,8 +1,12 @@
 import os
 import joblib
+import numpy as np
 import pandas as pd
 import streamlit as st
 
+# -----------------------------------------------------------------------------
+# 1. Page Configuration & Styling
+# -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="NCAA Football Predictor",
     layout="wide",
@@ -69,6 +73,7 @@ st.markdown(
 """,
     unsafe_allow_html=True,
 )
+
 
 # -----------------------------------------------------------------------------
 # 2. Data & Model Loaders
@@ -154,7 +159,7 @@ def get_tape_df(h_name, a_name, lookup_df):
                 "Penalty Yards / Game (Rolling)",
                 "Opp. Def Strength (SOS)",
             ],
-            f"{h_name}": [
+            f"🏠 {h_name}": [
                 f"{float(h_s.get('roll_pts_scored', 0.0)):.1f}",
                 f"{float(h_s.get('roll_yards', 0.0)):.1f}",
                 f"{float(h_s.get('roll_ypp', 0.0)):.2f}",
@@ -163,7 +168,7 @@ def get_tape_df(h_name, a_name, lookup_df):
                 f"{float(h_s.get('roll_pen_yds', 0.0)):.1f}",
                 f"{float(h_sos_val):.1f}",
             ],
-            f"✈{a_name}": [
+            f"✈️ {a_name}": [
                 f"{float(a_s.get('roll_pts_scored', 0.0)):.1f}",
                 f"{float(a_s.get('roll_yards', 0.0)):.1f}",
                 f"{float(a_s.get('roll_ypp', 0.0)):.2f}",
@@ -177,6 +182,9 @@ def get_tape_df(h_name, a_name, lookup_df):
 
 
 def predict_matchup(h_team, a_team, is_neutral, model, lookup_df):
+    if model is None or lookup_df is None:
+        return None
+
     h_s = lookup_df[lookup_df["team"] == h_team]
     a_s = lookup_df[lookup_df["team"] == a_team]
 
@@ -207,55 +215,111 @@ def predict_matchup(h_team, a_team, is_neutral, model, lookup_df):
         ]
     )
 
-    # Calculate differential features if they exist in the model's feature list
+    # Compute differential features if present in feature dictionary
+    input_data["diff_pts_scored"] = input_data["h_roll_pts_scored"] - input_data["a_roll_pts_scored"]
+    input_data["diff_ypp"] = input_data["h_roll_ypp"] - input_data["a_roll_ypp"]
+    input_data["diff_ppm"] = input_data["h_roll_ppm"] - input_data["a_roll_ppm"]
+    input_data["diff_turnovers"] = input_data["h_roll_turnovers"] - input_data["a_roll_turnovers"]
+    input_data["diff_sos"] = input_data["h_sos"] - input_data["a_sos"]
+
+    # Slice features matching the exact training set schema
     if isinstance(model, dict) and "features" in model:
         features = model["features"]
-        if "diff_pts_scored" in features:
-            input_data["diff_pts_scored"] = input_data["h_roll_pts_scored"] - input_data["a_roll_pts_scored"]
-        if "diff_ypp" in features:
-            input_data["diff_ypp"] = input_data["h_roll_ypp"] - input_data["a_roll_ypp"]
-        if "diff_ppm" in features:
-            input_data["diff_ppm"] = input_data["h_roll_ppm"] - input_data["a_roll_ppm"]
-        if "diff_turnovers" in features:
-            input_data["diff_turnovers"] = input_data["h_roll_turnovers"] - input_data["a_roll_turnovers"]
-        if "diff_sos" in features:
-            input_data["diff_sos"] = input_data["h_sos"] - input_data["a_sos"]
-        
-        # Ensure we only keep the features the model was trained with
         input_data = input_data[features]
 
-    # Handle dictionary model output vs single classifier
-    if isinstance(model, dict):
+    result = {}
+
+    # --- NEW COHERENT FORMAT (Spread + Total + Calibrator) ---
+    if isinstance(model, dict) and "spread_model" in model and "total_model" in model:
+        pred_spread = float(model["spread_model"].predict(input_data)[0])
+        pred_total = float(model["total_model"].predict(input_data)[0])
+
+        home_score = max(0.0, (pred_total + pred_spread) / 2.0)
+        away_score = max(0.0, (pred_total - pred_spread) / 2.0)
+
+        # Win probability calibrated directly from predicted margin
+        if "calibrator" in model and model["calibrator"] is not None:
+            home_prob = float(model["calibrator"].predict_proba([[pred_spread]])[0][1])
+        else:
+            # Fallback logistic transformation (k ~ 0.16 for CFB point spread)
+            home_prob = 1.0 / (1.0 + np.exp(-0.16 * pred_spread))
+
+        result["home_score"] = home_score
+        result["away_score"] = away_score
+        result["spread"] = pred_spread
+        result["total"] = pred_total
+        result["home_win_prob"] = home_prob
+        result["away_win_prob"] = 1.0 - home_prob
+
+    # --- FALLBACK TO OLD FORMAT (Separate Classifier & Score Regressors) ---
+    elif isinstance(model, dict) and "winner" in model:
         winner_model = model["winner"]
         h_score_model = model.get("h_score")
         a_score_model = model.get("a_score")
-    else:
-        winner_model = model
-        h_score_model = None
-        a_score_model = None
 
-    result = {}
-    if hasattr(winner_model, "predict_proba"):
-        probabilities = winner_model.predict_proba(input_data)[0]
-        result["away_win_prob"] = float(probabilities[0])
-        result["home_win_prob"] = float(probabilities[1])
-    
-    if h_score_model and a_score_model:
-        result["home_score"] = float(h_score_model.predict(input_data)[0])
-        result["away_score"] = float(a_score_model.predict(input_data)[0])
-        
+        if hasattr(winner_model, "predict_proba"):
+            probs = winner_model.predict_proba(input_data)[0]
+            result["away_win_prob"] = float(probs[0])
+            result["home_win_prob"] = float(probs[1])
+
+        if h_score_model and a_score_model:
+            result["home_score"] = float(h_score_model.predict(input_data)[0])
+            result["away_score"] = float(a_score_model.predict(input_data)[0])
+
     return result
 
 
 def render_prediction_display(res, h_team, a_team, lookup_df):
-    st.subheader("Prediction Results")
-    st.write(f"Home win probability: {res['home_win_prob']:.2%}")
-    st.write(f"Away win probability: {res['away_win_prob']:.2%}")
-    
-    if "home_score" in res and "away_score" in res:
-        st.write(f"### Projected Score: {h_team} {res['home_score']:.1f} - {a_team} {res['away_score']:.1f}")
-    
-    st.subheader("Matchup Stats Comparison")
+    if not res:
+        st.warning("Prediction data unavailable for this matchup.")
+        return
+
+    home_win = res["home_win_prob"] >= res["away_win_prob"]
+    favored_team = h_team if home_win else a_team
+    favored_prob = res["home_win_prob"] if home_win else res["away_win_prob"]
+
+    home_score = res.get("home_score", 0.0)
+    away_score = res.get("away_score", 0.0)
+    spread = abs(res.get("spread", home_score - away_score))
+
+    # Banner displaying projected outcome
+    st.markdown(
+        f"""
+        <div class="winner-banner">
+            <div class="winner-title">🏆 Projected Winner: {favored_team} ({favored_prob:.1%} Win Prob)</div>
+            <div class="winner-subtitle">Projected Scoreline: {h_team} {home_score:.1f} — {away_team if 'away_team' in locals() else a_team} {away_score:.1f} (Margin: {spread:.1f} pts)</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col1, col2, col3 = st.columns([4, 1, 4])
+    with col1:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-team">🏠 {h_team}</div>
+                <div class="metric-prob">{res['home_win_prob']:.1%}</div>
+                <div class="metric-score">Projected Score: <b>{home_score:.1f}</b></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    with col2:
+        st.markdown('<div class="vs-divider">VS</div>', unsafe_allow_html=True)
+    with col3:
+        st.markdown(
+            f"""
+            <div class="metric-card">
+                <div class="metric-team">✈️ {a_team}</div>
+                <div class="metric-prob">{res['away_win_prob']:.1%}</div>
+                <div class="metric-score">Projected Score: <b>{away_score:.1f}</b></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("### Matchup Tale of the Tape")
     tape_df = get_tape_df(h_team, a_team, lookup_df)
     if not tape_df.empty:
         st.table(tape_df)
@@ -266,106 +330,138 @@ def get_all_predictions(df, lookup_df):
     model = load_model()
     predictions = []
     for _, row in df.iterrows():
-        h_team = row['h_team']
-        a_team = row['a_team']
+        h_team = row["h_team"]
+        a_team = row["a_team"]
         res = predict_matchup(h_team, a_team, False, model, lookup_df)
-        
+
         if not res:
-            predictions.append({
-                "Predicted Winner": "TBD",
-                "Win Prob": "TBD",
-                "Proj. Score": "TBD",
-                "Home Win %": "TBD",
-                "Away Win %": "TBD"
-            })
+            predictions.append(
+                {
+                    "Predicted Winner": "TBD",
+                    "Win Prob": "TBD",
+                    "Proj. Score": "TBD",
+                    "Home Win %": "TBD",
+                    "Away Win %": "TBD",
+                }
+            )
             continue
-            
-        winner = h_team if res['home_win_prob'] > res['away_win_prob'] else a_team
-        win_prob = max(res['home_win_prob'], res['away_win_prob'])
+
+        winner = h_team if res["home_win_prob"] >= res["away_win_prob"] else a_team
+        win_prob = max(res["home_win_prob"], res["away_win_prob"])
         proj_score = f"{h_team} {res.get('home_score', 0):.1f} - {a_team} {res.get('away_score', 0):.1f}"
-        
-        predictions.append({
-            "Predicted Winner": winner,
-            "Win Prob": f"{win_prob:.1%}",
-            "Proj. Score": proj_score,
-            "Home Win %": f"{res['home_win_prob']:.1%}",
-            "Away Win %": f"{res['away_win_prob']:.1%}"
-        })
+
+        predictions.append(
+            {
+                "Predicted Winner": winner,
+                "Win Prob": f"{win_prob:.1%}",
+                "Proj. Score": proj_score,
+                "Home Win %": f"{res['home_win_prob']:.1%}",
+                "Away Win %": f"{res['away_win_prob']:.1%}",
+            }
+        )
     return pd.DataFrame(predictions, index=df.index)
 
-# Load Data
+
+# -----------------------------------------------------------------------------
+# 4. App Execution & Layout
+# -----------------------------------------------------------------------------
 model = load_model()
 lookup_df = load_lookup_data()
 schedule_df = load_scheduled_games()
 
-# Filters
+# Sidebar Filters
 st.sidebar.markdown("### Filters")
 
-# Week
-all_weeks = sorted(schedule_df["week"].dropna().unique().tolist())
-default_week = 6 if 6 in all_weeks else all_weeks[0]
-selected_week = st.sidebar.selectbox("Week", all_weeks, index=all_weeks.index(default_week))
-filtered_df = schedule_df[schedule_df["week"] == selected_week]
+if not schedule_df.empty:
+    # Week Selection
+    all_weeks = sorted(schedule_df["week"].dropna().unique().tolist())
+    default_week = 6 if 6 in all_weeks else all_weeks[0]
+    selected_week = st.sidebar.selectbox("Week", all_weeks, index=all_weeks.index(default_week))
+    filtered_df = schedule_df[schedule_df["week"] == selected_week]
 
-# Division
-all_divisions = sorted(list(set(filtered_df["home_classification"].dropna().unique()) | set(filtered_df["away_classification"].dropna().unique())))
-default_div = "fbs" if "fbs" in all_divisions else (all_divisions[0] if all_divisions else None)
-selected_division = st.sidebar.selectbox("Division", ["All"] + all_divisions, index=(["All"] + all_divisions).index(default_div) if default_div in (["All"] + all_divisions) else 0)
+    # Division Selection
+    all_divisions = sorted(
+        list(
+            set(filtered_df["home_classification"].dropna().unique())
+            | set(filtered_df["away_classification"].dropna().unique())
+        )
+    )
+    default_div = "fbs" if "fbs" in all_divisions else (all_divisions[0] if all_divisions else None)
+    div_options = ["All"] + all_divisions
+    div_index = div_options.index(default_div) if default_div in div_options else 0
+    selected_division = st.sidebar.selectbox("Division", div_options, index=div_index)
 
-if selected_division != "All":
-    filtered_df = filtered_df[(filtered_df["home_classification"] == selected_division) | (filtered_df["away_classification"] == selected_division)]
+    if selected_division != "All":
+        filtered_df = filtered_df[
+            (filtered_df["home_classification"] == selected_division)
+            | (filtered_df["away_classification"] == selected_division)
+            ]
 
-# Conference
-all_conferences = sorted(list(set(filtered_df["home_conference"].dropna().unique()) | set(filtered_df["away_conference"].dropna().unique())))
-selected_conference = st.sidebar.selectbox("Conference", ["All"] + all_conferences)
+    # Conference Selection
+    all_conferences = sorted(
+        list(
+            set(filtered_df["home_conference"].dropna().unique())
+            | set(filtered_df["away_conference"].dropna().unique())
+        )
+    )
+    selected_conference = st.sidebar.selectbox("Conference", ["All"] + all_conferences)
 
-if selected_conference != "All":
-    filtered_df = filtered_df[(filtered_df["home_conference"] == selected_conference) | (filtered_df["away_conference"] == selected_conference)]
+    if selected_conference != "All":
+        filtered_df = filtered_df[
+            (filtered_df["home_conference"] == selected_conference)
+            | (filtered_df["away_conference"] == selected_conference)
+            ]
 
-schedule_df = filtered_df
+    schedule_df = filtered_df
 
-st.divider()
-st.markdown(f"**How it works:** The model is trained on rolling 3-game averages from the last 3 seasons plus the current season so far, then used to predict all scheduled {selected_division.upper()} games this week.")
-
-st.markdown("---")
-st.markdown("### Full Week Matchup Overview")
-
-# Interactive Data Table with Selection Support
-schedule_df["Matchup"] = schedule_df["a_team"] + " @ " + schedule_df["h_team"]
-
-# Calculate predictions
-pred_df = get_all_predictions(schedule_df, lookup_df)
-schedule_df = pd.concat([schedule_df, pred_df], axis=1)
-
-event = st.dataframe(
-    schedule_df[
-        [
-            "Matchup",
-            "Predicted Winner",
-            "Win Prob",
-            "Proj. Score",
-            "Home Win %",
-            "Away Win %",
-        ]
-    ],
-    use_container_width=True,
-    hide_index=True,
-    selection_mode="single-row",
-    on_select="rerun",
-    key="games_table",
+st.title("🏈 NCAA Football Game Predictor")
+st.markdown(
+    "**How it works:** The engine predicts game spread and total points, then calculates "
+    "a win probability calibrated directly to the predicted scoreline."
 )
 
-# Sync table click with view details if row selected
-if event and hasattr(event, "selection") and event.selection:
-    selected_rows = event.selection.get("rows", [])
-    if selected_rows:
-        row = schedule_df.iloc[selected_rows[0]]
-        h_team = row["h_team"]
-        a_team = row["a_team"]
-        st.info(f"Selected: **{a_team} @ {h_team}**")
-        
-        # Predict and render
-        is_neutral = False # Assuming False for scheduled games in table
-        prediction = predict_matchup(h_team, a_team, is_neutral, model, lookup_df)
-        if prediction:
-            render_prediction_display(prediction, h_team, a_team, lookup_df)
+st.divider()
+st.markdown("### Full Week Matchup Overview")
+
+if not schedule_df.empty:
+    schedule_df["Matchup"] = schedule_df["a_team"] + " @ " + schedule_df["h_team"]
+
+    # Compute coherent predictions
+    pred_df = get_all_predictions(schedule_df, lookup_df)
+    display_df = pd.concat([schedule_df, pred_df], axis=1)
+
+    event = st.dataframe(
+        display_df[
+            [
+                "Matchup",
+                "Predicted Winner",
+                "Win Prob",
+                "Proj. Score",
+                "Home Win %",
+                "Away Win %",
+            ]
+        ],
+        use_container_width=True,
+        hide_index=True,
+        selection_mode="single-row",
+        on_select="rerun",
+        key="games_table",
+    )
+
+    # Sync table click with detailed prediction view
+    if event and hasattr(event, "selection") and event.selection:
+        selected_rows = event.selection.get("rows", [])
+        if selected_rows:
+            row = display_df.iloc[selected_rows[0]]
+            h_team = row["h_team"]
+            a_team = row["a_team"]
+
+            st.divider()
+            st.markdown(f"## Detailed Analysis: **{a_team} @ {h_team}**")
+
+            is_neutral = row.get("neutral_site", False)
+            prediction = predict_matchup(h_team, a_team, is_neutral, model, lookup_df)
+            if prediction:
+                render_prediction_display(prediction, h_team, a_team, lookup_df)
+else:
+    st.info("No scheduled games found matching the selected filters.")
