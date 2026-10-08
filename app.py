@@ -459,7 +459,8 @@ if not schedule_df.empty:
             st.divider()
             st.markdown(f"## Detailed Analysis: **{a_team} @ {h_team}**")
 
-            is_neutral = row.get("neutral_site", False)
+            raw_neutral = row.get("neutral_site", False)
+            is_neutral = bool(raw_neutral) if pd.notna(raw_neutral) else False
             prediction = predict_matchup(h_team, a_team, is_neutral, model, lookup_df)
             if prediction:
                 render_prediction_display(prediction, h_team, a_team, lookup_df)
