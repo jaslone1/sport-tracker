@@ -258,6 +258,38 @@ def render_prediction_display(res, h_team, a_team, lookup_df):
     if not tape_df.empty:
         st.table(tape_df)
 
+
+@st.cache_data
+def get_all_predictions(df, model, lookup_df):
+    predictions = []
+    for _, row in df.iterrows():
+        h_team = row['h_team']
+        a_team = row['a_team']
+        res = predict_matchup(h_team, a_team, False, model, lookup_df)
+        
+        if not res:
+            predictions.append({
+                "Predicted Winner": "TBD",
+                "Win Prob": "TBD",
+                "Proj. Score": "TBD",
+                "Home Win %": "TBD",
+                "Away Win %": "TBD"
+            })
+            continue
+            
+        winner = h_team if res['home_win_prob'] > res['away_win_prob'] else a_team
+        win_prob = max(res['home_win_prob'], res['away_win_prob'])
+        proj_score = f"{h_team} {res.get('home_score', 0):.1f} - {a_team} {res.get('away_score', 0):.1f}"
+        
+        predictions.append({
+            "Predicted Winner": winner,
+            "Win Prob": f"{win_prob:.1%}",
+            "Proj. Score": proj_score,
+            "Home Win %": f"{res['home_win_prob']:.1%}",
+            "Away Win %": f"{res['away_win_prob']:.1%}"
+        })
+    return pd.DataFrame(predictions, index=df.index)
+
 # Load Data
 model = load_model()
 lookup_df = load_lookup_data()
@@ -297,11 +329,10 @@ st.markdown("### Full Week Matchup Overview")
 
 # Interactive Data Table with Selection Support
 schedule_df["Matchup"] = schedule_df["a_team"] + " @ " + schedule_df["h_team"]
-schedule_df["Predicted Winner"] = "TBD" # Placeholder
-schedule_df["Win Prob"] = "TBD" # Placeholder
-schedule_df["Proj. Score"] = "TBD" # Placeholder
-schedule_df["Home Win %"] = "TBD" # Placeholder
-schedule_df["Away Win %"] = "TBD" # Placeholder
+
+# Calculate predictions
+pred_df = get_all_predictions(schedule_df, model, lookup_df)
+schedule_df = pd.concat([schedule_df, pred_df], axis=1)
 
 event = st.dataframe(
     schedule_df[
