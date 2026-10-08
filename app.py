@@ -321,7 +321,7 @@ def render_prediction_display(res, h_team, a_team, lookup_df):
         )
 
         # Key Advantage Summary (Explaining Outcome)
-        st.markdown("### 🔑 Key Matchup Drivers")
+        st.markdown("### Key Matchup Drivers")
         h_s = lookup_df[lookup_df["team"] == h_team].iloc[0] if not lookup_df[
             lookup_df["team"] == h_team].empty else None
         a_s = lookup_df[lookup_df["team"] == a_team].iloc[0] if not lookup_df[
