@@ -265,14 +265,22 @@ schedule_df = load_scheduled_games()
 
 # Filters
 st.sidebar.markdown("### Filters")
-all_divisions = sorted(list(set(schedule_df["home_classification"].dropna().unique()) | set(schedule_df["away_classification"].dropna().unique())))
+
+# Week
+all_weeks = sorted(schedule_df["week"].dropna().unique().tolist())
+default_week = 6 if 6 in all_weeks else all_weeks[0]
+selected_week = st.sidebar.selectbox("Week", all_weeks, index=all_weeks.index(default_week))
+filtered_df = schedule_df[schedule_df["week"] == selected_week]
+
+# Division
+all_divisions = sorted(list(set(filtered_df["home_classification"].dropna().unique()) | set(filtered_df["away_classification"].dropna().unique())))
 default_div = "fbs" if "fbs" in all_divisions else (all_divisions[0] if all_divisions else None)
 selected_division = st.sidebar.selectbox("Division", ["All"] + all_divisions, index=(["All"] + all_divisions).index(default_div) if default_div in (["All"] + all_divisions) else 0)
 
-filtered_df = schedule_df
 if selected_division != "All":
-    filtered_df = schedule_df[(schedule_df["home_classification"] == selected_division) | (schedule_df["away_classification"] == selected_division)]
+    filtered_df = filtered_df[(filtered_df["home_classification"] == selected_division) | (filtered_df["away_classification"] == selected_division)]
 
+# Conference
 all_conferences = sorted(list(set(filtered_df["home_conference"].dropna().unique()) | set(filtered_df["away_conference"].dropna().unique())))
 selected_conference = st.sidebar.selectbox("Conference", ["All"] + all_conferences)
 
