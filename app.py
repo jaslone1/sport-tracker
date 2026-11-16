@@ -396,7 +396,7 @@ st.sidebar.markdown("### Filters")
 if not schedule_df.empty:
     # Week Selection
     all_weeks = sorted(schedule_df["week"].dropna().unique().tolist())
-    default_week = 11 if 11  in all_weeks else all_weeks[0]
+    default_week = 12 if 12 in all_weeks else all_weeks[0]
     selected_week = st.sidebar.selectbox("Week", all_weeks, index=all_weeks.index(default_week))
     filtered_df = schedule_df[schedule_df["week"] == selected_week]
 
